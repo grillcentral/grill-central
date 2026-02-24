@@ -89,7 +89,7 @@ export default function Home() {
         />
 
         {/* Ícones do topo (settings + whatsapp) */}
-        <div className="absolute top-3 right-3 flex gap-1 z-10">
+        <div className="absolute top-3 right-3 flex gap-1 z-50">
           <button
             onClick={handleWhatsApp}
             className="w-9 h-9 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition"
@@ -99,7 +99,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => setShowAdmin(true)}
-            className="w-9 h-9 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition"
+            className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-600 backdrop-blur-sm flex items-center justify-center text-white hover:bg-zinc-600 transition"
             title="Admin"
           >
             <Settings className="w-4 h-4" />
@@ -455,6 +455,15 @@ export default function Home() {
           <MessageCircle className="w-7 h-7" />
         </button>
       )}
+
+      {/* BOTÃO ADMIN FIXO — sempre visível no canto inferior esquerdo */}
+      <button
+        onClick={() => setShowAdmin(true)}
+        className="fixed bottom-6 left-5 z-40 w-12 h-12 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-400 hover:text-white flex items-center justify-center shadow-lg transition-all hover:scale-105"
+        title="Painel Admin"
+      >
+        <Settings className="w-5 h-5" />
+      </button>
 
       {/* ── MODAIS ── */}
       {showCheckout && <CheckoutModal onClose={() => setShowCheckout(false)} />}
