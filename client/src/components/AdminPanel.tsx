@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { products } from '@/data/products';
 import { toast } from 'sonner';
-import { DEFAULT_CONFIG, StoreConfig } from '@/lib/storeConfig';
+import { getStoreConfig, StoreConfig } from '@/lib/storeConfig';
 import { getProductOverrides, saveProductOverride, resetProductOverride } from '@/lib/productOverrides';
 
 interface AdminPanelProps {
@@ -95,7 +95,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
 
   // ── Tab: Loja ──
   // ✅ Sempre inicia com DEFAULT_CONFIG do código — sem localStorage
-  const [storeForm, setStoreForm] = useState<StoreConfig>({ ...DEFAULT_CONFIG });
+  const [storeForm, setStoreForm] = useState<StoreConfig>(getStoreConfig());
 
   // ── Login ────────────────────────────────────────────────────────────────
   const handleLogin = (e: React.FormEvent) => {
