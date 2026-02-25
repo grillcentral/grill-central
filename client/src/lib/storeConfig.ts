@@ -10,13 +10,13 @@ export interface StoreConfig {
   isOpen: boolean;
 }
 
-const DEFAULT_CONFIG: StoreConfig = {
+export const DEFAULT_CONFIG: StoreConfig = {
   name: 'GRILL CENTRAL',
-  neighborhood: 'Centro',          // ← aqui
-  city: 'Forquilhinha',            // ← aqui
-  state: 'SC',                     // ← aqui
-  address: 'Rua Cinquentenário, 15', // ← aqui
-  hours: 'Qua–Dom 18:30h–23:00h', // ← aqui
+  neighborhood: 'Centro',
+  city: 'Forquilhinha',
+  state: 'SC',
+  address: 'Rua Cinquentenário, 15',
+  hours: 'Qua–Dom 18:30h–23:00h',
   whatsappNumber: '5548988362576',
   isOpen: true,
 };
