@@ -12,14 +12,15 @@ export interface StoreConfig {
 
 const DEFAULT_CONFIG: StoreConfig = {
   name: 'GRILL CENTRAL',
-  neighborhood: 'Cassino',
-  city: 'Rio Grande',
-  state: 'RS',
-  address: 'R. dos Navegantes, 1221',
-  hours: 'Qua–Dom 18h–23h',
+  neighborhood: 'Centro',          // ← aqui
+  city: 'Forquilhinha',            // ← aqui
+  state: 'SC',                     // ← aqui
+  address: 'Rua Cinquentenário, 15', // ← aqui
+  hours: 'Qua–Dom 18:30h–23:00h', // ← aqui
   whatsappNumber: '5548988362576',
   isOpen: true,
 };
+
 
 export function getStoreConfig(): StoreConfig {
   try {
