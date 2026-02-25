@@ -1,29 +1,26 @@
 // client/src/lib/productOverrides.ts
+// ✅ SEM localStorage — sem overrides dinâmicos
+// Produtos são fixos em products.ts. Para editar, altere diretamente products.ts e faça deploy.
+
 export interface ProductOverride {
+  id: string;
   name?: string;
   price?: number;
   description?: string;
-  active?: boolean;
+  hidden?: boolean;
 }
 
-export function getProductOverrides(): Record<string, ProductOverride> {
-  try {
-    return JSON.parse(localStorage.getItem('productOverrides') || '{}');
-  } catch {
-    return {};
-  }
+// Retorna array vazio — nenhum override ativo
+export function getProductOverrides(): ProductOverride[] {
+  return [];
 }
 
-export function saveProductOverride(id: string, override: ProductOverride) {
-  const all = getProductOverrides();
-  all[id] = { ...all[id], ...override };
-  localStorage.setItem('productOverrides', JSON.stringify(all));
-  window.dispatchEvent(new Event('productOverridesUpdated'));
+// Mantido para não quebrar imports existentes, mas não faz nada
+export function saveProductOverride(_override: ProductOverride): void {
+  console.warn('[productOverrides] saveProductOverride desativado — edite products.ts no código.');
 }
 
-export function resetProductOverride(id: string) {
-  const all = getProductOverrides();
-  delete all[id];
-  localStorage.setItem('productOverrides', JSON.stringify(all));
-  window.dispatchEvent(new Event('productOverridesUpdated'));
+// Mantido para não quebrar imports existentes, mas não faz nada
+export function resetProductOverride(_id: string): void {
+  console.warn('[productOverrides] resetProductOverride desativado.');
 }
