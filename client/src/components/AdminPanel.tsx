@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { products } from '@/data/products';
 import { toast } from 'sonner';
-import { getStoreConfig, saveStoreConfig, StoreConfig } from '@/lib/storeConfig';
+import { DEFAULT_CONFIG, StoreConfig } from '@/lib/storeConfig';
 import { getProductOverrides, saveProductOverride, resetProductOverride } from '@/lib/productOverrides';
 
 interface AdminPanelProps {
@@ -94,8 +94,8 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const refreshOverrides = () => setOverrides(getProductOverrides());
 
   // ── Tab: Loja ──
-  const [storeForm, setStoreForm] = useState<StoreConfig>(getStoreConfig);
-  const [storeSaving, setStoreSaving] = useState(false);
+  // ✅ Sempre inicia com DEFAULT_CONFIG do código — sem localStorage
+  const [storeForm, setStoreForm] = useState<StoreConfig>({ ...DEFAULT_CONFIG });
 
   // ── Login ────────────────────────────────────────────────────────────────
   const handleLogin = (e: React.FormEvent) => {
@@ -198,13 +198,9 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   };
 
   // ── Handlers: Loja ──────────────────────────────────────────────────────
+  // ✅ Salvar não usa mais localStorage — mostra aviso explicativo
   const handleSaveStore = () => {
-    setStoreSaving(true);
-    saveStoreConfig(storeForm);
-    setTimeout(() => {
-      setStoreSaving(false);
-      toast.success('✅ Informações da loja atualizadas!');
-    }, 400);
+    toast.info('ℹ️ Para alterar o endereço permanentemente, edite DEFAULT_CONFIG em storeConfig.ts e faça deploy.');
   };
 
   // ── TABS RENDER ──────────────────────────────────────────────────────────
@@ -324,7 +320,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                   className={`bg-zinc-800 border-zinc-700 p-4 transition-all ${!isActive ? 'opacity-50' : ''}`}>
 
                   {isEditing ? (
-                    /* ── Modo edição ── */
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs text-zinc-400 font-mono">{product.id}</span>
@@ -359,7 +354,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                       </div>
                     </div>
                   ) : (
-                    /* ── Modo visualização ── */
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -383,20 +377,17 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                         </p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        {/* Ocultar/mostrar */}
                         <Button size="sm" variant="ghost"
                           onClick={() => toggleActive(product.id)}
                           className="px-2 text-zinc-400 hover:text-white"
                           title={isActive ? 'Ocultar do cardápio' : 'Mostrar no cardápio'}>
                           {isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </Button>
-                        {/* Editar */}
                         <Button size="sm" variant="ghost"
                           onClick={() => startEdit(product.id)}
                           className="px-2 text-zinc-400 hover:text-white">
                           ✏️
                         </Button>
-                        {/* Reset */}
                         {hasOverride && (
                           <Button size="sm" variant="ghost"
                             onClick={() => resetProduct(product.id)}
@@ -419,80 +410,65 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
         ══════════════════════════════════════════════════════ */}
         {activeTab === 'loja' && (
           <div className="p-6 max-w-lg space-y-4">
-            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-              <p className="text-sm text-green-300">
-                🏪 Edite as informações exibidas no topo do cardápio.
+
+            {/* ✅ Aviso explicativo */}
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <p className="text-sm text-blue-300">
+                📌 <strong>Dados fixos no código.</strong> As informações abaixo são exibidas para todos os clientes.
+                Para alterar permanentemente, edite <code className="bg-zinc-800 px-1 rounded">DEFAULT_CONFIG</code> em{' '}
+                <code className="bg-zinc-800 px-1 rounded">client/src/lib/storeConfig.ts</code> e faça deploy.
               </p>
             </div>
 
-            <div className="space-y-4">
+            {/* Campos somente leitura mostrando os valores atuais do código */}
+            <div className="space-y-4 opacity-80">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-zinc-400">Bairro</Label>
-                  <Input value={storeForm.neighborhood}
-                    onChange={e => setStoreForm(f => ({ ...f, neighborhood: e.target.value }))}
-                    className="bg-zinc-800 border-zinc-700 mt-1"
-                    placeholder="Cassino" />
+                  <Input value={storeForm.neighborhood} readOnly
+                    className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
                 </div>
                 <div>
                   <Label className="text-xs text-zinc-400">Cidade</Label>
-                  <Input value={storeForm.city}
-                    onChange={e => setStoreForm(f => ({ ...f, city: e.target.value }))}
-                    className="bg-zinc-800 border-zinc-700 mt-1"
-                    placeholder="Rio Grande" />
+                  <Input value={storeForm.city} readOnly
+                    className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
                 </div>
               </div>
-
               <div>
                 <Label className="text-xs text-zinc-400">Endereço completo</Label>
-                <Input value={storeForm.address}
-                  onChange={e => setStoreForm(f => ({ ...f, address: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-700 mt-1"
-                  placeholder="R. dos Navegantes, 1221" />
+                <Input value={storeForm.address} readOnly
+                  className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
               </div>
-
               <div>
                 <Label className="text-xs text-zinc-400">Horário de funcionamento</Label>
-                <Input value={storeForm.hours}
-                  onChange={e => setStoreForm(f => ({ ...f, hours: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-700 mt-1"
-                  placeholder="Qua–Dom 18h–23h" />
+                <Input value={storeForm.hours} readOnly
+                  className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
               </div>
-
               <div>
                 <Label className="text-xs text-zinc-400">Número WhatsApp (com DDI, sem +)</Label>
-                <Input value={storeForm.whatsappNumber}
-                  onChange={e => setStoreForm(f => ({ ...f, whatsappNumber: e.target.value }))}
-                  className="bg-zinc-800 border-zinc-700 mt-1"
-                  placeholder="5548988362576" />
+                <Input value={storeForm.whatsappNumber} readOnly
+                  className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
               </div>
-
-              {/* Toggle Aberto/Fechado */}
               <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg border border-zinc-700">
                 <div>
                   <p className="text-sm font-semibold">Status da loja</p>
                   <p className="text-xs text-zinc-500">Exibe "Aberto agora" ou "Fechado"</p>
                 </div>
-                <button
-                  onClick={() => setStoreForm(f => ({ ...f, isOpen: !f.isOpen }))}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    storeForm.isOpen ? 'bg-green-600' : 'bg-zinc-600'
-                  }`}>
-                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                    storeForm.isOpen ? 'left-7' : 'left-1'
-                  }`} />
-                </button>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  storeForm.isOpen ? 'bg-green-700 text-green-100' : 'bg-zinc-600 text-zinc-300'
+                }`}>
+                  {storeForm.isOpen ? 'Aberto' : 'Fechado'}
+                </span>
               </div>
-
-              <Button
-                onClick={handleSaveStore}
-                disabled={storeSaving}
-                className="w-full bg-red-600 hover:bg-red-700 gap-2">
-                {storeSaving
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</>
-                  : <><Save className="w-4 h-4" /> Salvar Informações da Loja</>}
-              </Button>
             </div>
+
+            {/* Botão informativo */}
+            <Button
+              onClick={handleSaveStore}
+              variant="outline"
+              className="w-full border-blue-600 text-blue-400 hover:bg-blue-950 gap-2">
+              <Save className="w-4 h-4" /> Como alterar estes dados?
+            </Button>
           </div>
         )}
 
