@@ -1,4 +1,5 @@
-import { useState } from 'react';
+cat > /mnt/user-data/outputs/AdminPanel.tsx << 'ENDOFFILE'
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,8 @@ import {
 } from 'lucide-react';
 import { products } from '@/data/products';
 import { toast } from 'sonner';
-import { getStoreConfig, StoreConfig } from '@/lib/storeConfig';
+import { supabase } from '@/lib/supabase';
+import { getStoreConfig, saveStoreConfig, StoreConfig } from '@/lib/storeConfig';
 import { getProductOverrides, saveProductOverride, resetProductOverride } from '@/lib/productOverrides';
 
 interface AdminPanelProps {
@@ -22,22 +24,34 @@ const IMGBB_API_KEY = '168636329f99c2f019368c3c7d628d83';
 const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload';
 
 type Tab = 'fotos' | 'produtos' | 'loja';
+type ImageMap = Record<string, string>;
 
-// ── helpers imagens ──────────────────────────────────────────────────────────
-function getStoredImages(): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem('productImages') || '{}'); }
-  catch { return {}; }
+// ── Supabase image helpers ────────────────────────────────────────────────────
+async function loadImages(): Promise<ImageMap> {
+  const { data, error } = await supabase
+    .from('product_images')
+    .select('id, image_url');
+  if (error) { console.error('Supabase load error:', error); return {}; }
+  const map: ImageMap = {};
+  (data ?? []).forEach((r: any) => { map[r.id] = r.image_url; });
+  return map;
 }
-function saveImageUrl(productId: string, url: string) {
-  const s = getStoredImages(); s[productId] = url;
-  localStorage.setItem('productImages', JSON.stringify(s));
-  window.dispatchEvent(new Event('productImagesUpdated'));
+
+async function saveImageUrl(productId: string, url: string): Promise<void> {
+  const { error } = await supabase.from('product_images').upsert({
+    id: productId,
+    image_url: url,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
 }
-function removeImageUrl(productId: string) {
-  const s = getStoredImages(); delete s[productId];
-  localStorage.setItem('productImages', JSON.stringify(s));
-  window.dispatchEvent(new Event('productImagesUpdated'));
+
+async function removeImageUrl(productId: string): Promise<void> {
+  const { error } = await supabase.from('product_images').delete().eq('id', productId);
+  if (error) throw error;
 }
+
+// ── ImgBB helpers ─────────────────────────────────────────────────────────────
 function resizeImage(file: File, maxW = 1200, maxH = 900): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -64,6 +78,7 @@ function resizeImage(file: File, maxW = 1200, maxH = 900): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
 async function uploadToImgBB(base64: string, name: string): Promise<string> {
   const formData = new FormData();
   formData.append('key', IMGBB_API_KEY);
@@ -76,7 +91,7 @@ async function uploadToImgBB(base64: string, name: string): Promise<string> {
   return data.data.display_url as string;
 }
 
-// ── Componente principal ─────────────────────────────────────────────────────
+// ── Componente principal ──────────────────────────────────────────────────────
 export default function AdminPanel({ onClose }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword]               = useState('');
@@ -84,20 +99,26 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
 
   // ── Tab: Fotos ──
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [images, setImages]           = useState<Record<string, string>>(getStoredImages);
-  const refreshImages = () => setImages(getStoredImages());
+  const [images, setImages]           = useState<ImageMap>({});
 
   // ── Tab: Produtos ──
-  const [overrides, setOverrides]   = useState(getProductOverrides);
-  const [editingId, setEditingId]   = useState<string | null>(null);
-  const [editForm, setEditForm]     = useState({ name: '', price: '', description: '' });
+  const [overrides, setOverrides] = useState(getProductOverrides);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm]   = useState({ name: '', price: '', description: '' });
   const refreshOverrides = () => setOverrides(getProductOverrides());
 
   // ── Tab: Loja ──
-  // ✅ Sempre inicia com DEFAULT_CONFIG do código — sem localStorage
-  const [storeForm, setStoreForm] = useState<StoreConfig>(getStoreConfig());
+  const [storeForm, setStoreForm]   = useState<StoreConfig | null>(null);
+  const [savingStore, setSavingStore] = useState(false);
 
-  // ── Login ────────────────────────────────────────────────────────────────
+  // Carrega imagens e config da loja ao autenticar
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadImages().then(setImages);
+    getStoreConfig().then(setStoreForm);
+  }, [isAuthenticated]);
+
+  // ── Login ─────────────────────────────────────────────────────────────────
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (password === ADMIN_PASSWORD) {
@@ -130,7 +151,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     );
   }
 
-  // ── Handlers: Fotos ──────────────────────────────────────────────────────
+  // ── Handlers: Fotos ───────────────────────────────────────────────────────
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     productId: string,
@@ -144,26 +165,33 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
       toast.info('📤 Enviando para a nuvem...');
       const base64 = await resizeImage(file);
       const url    = await uploadToImgBB(base64, productName);
-      saveImageUrl(productId, url);
-      refreshImages();
-      toast.success('✅ Foto salva na nuvem!');
-    } catch (err) {
+      await saveImageUrl(productId, url);
+      setImages(prev => ({ ...prev, [productId]: url }));
+      window.dispatchEvent(new Event('productImagesUpdated'));
+      toast.success('✅ Foto salva! Visível em todos os dispositivos.');
+    } catch (err: any) {
       console.error(err);
-      toast.error('❌ Erro ao enviar foto. Tente novamente.');
+      toast.error(`❌ Erro: ${err.message}`);
     } finally {
       setUploadingId(null);
       e.target.value = '';
     }
   };
-  const handleRemoveImage = (productId: string) => {
-    removeImageUrl(productId);
-    refreshImages();
-    toast.success('🗑️ Foto removida!');
+
+  const handleRemoveImage = async (productId: string) => {
+    try {
+      await removeImageUrl(productId);
+      setImages(prev => { const n = { ...prev }; delete n[productId]; return n; });
+      window.dispatchEvent(new Event('productImagesUpdated'));
+      toast.success('🗑️ Foto removida!');
+    } catch (err: any) {
+      toast.error(`❌ Erro ao remover: ${err.message}`);
+    }
   };
 
-  // ── Handlers: Produtos ───────────────────────────────────────────────────
+  // ── Handlers: Produtos ────────────────────────────────────────────────────
   const startEdit = (id: string) => {
-    const ov = overrides[id] || {};
+    const ov   = overrides[id] || {};
     const base = products.find(p => p.id === id)!;
     setEditForm({
       name:        ov.name        ?? base.name,
@@ -172,6 +200,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     });
     setEditingId(id);
   };
+
   const saveEdit = (id: string) => {
     const price = parseFloat(editForm.price.replace(',', '.'));
     if (isNaN(price) || price <= 0) { toast.error('Preço inválido!'); return; }
@@ -182,28 +211,39 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     });
     refreshOverrides();
     setEditingId(null);
-    toast.success('✅ Produto atualizado! (somente neste dispositivo)');
+    toast.success('✅ Produto atualizado!');
   };
+
   const resetProduct = (id: string) => {
     resetProductOverride(id);
     refreshOverrides();
     if (editingId === id) setEditingId(null);
     toast.info('↩️ Produto restaurado ao padrão.');
   };
+
   const toggleActive = (id: string) => {
     const current = overrides[id]?.active ?? true;
     saveProductOverride(id, { active: !current });
     refreshOverrides();
-    toast.success(current ? '🙈 Produto ocultado do cardápio.' : '👁️ Produto visível no cardápio.');
+    toast.success(current ? '🙈 Produto ocultado.' : '👁️ Produto visível.');
   };
 
-  // ── Handlers: Loja ──────────────────────────────────────────────────────
-  // ✅ Salvar não usa mais localStorage — mostra aviso explicativo
-  const handleSaveStore = () => {
-    toast.info('ℹ️ Para alterar o endereço permanentemente, edite DEFAULT_CONFIG em storeConfig.ts e faça deploy.');
+  // ── Handlers: Loja ────────────────────────────────────────────────────────
+  const handleSaveStore = async () => {
+    if (!storeForm) return;
+    setSavingStore(true);
+    try {
+      await saveStoreConfig(storeForm);
+      window.dispatchEvent(new Event('storeConfigUpdated'));
+      toast.success('✅ Dados da loja salvos em todos os dispositivos!');
+    } catch (err: any) {
+      toast.error(`❌ Erro ao salvar: ${err.message}`);
+    } finally {
+      setSavingStore(false);
+    }
   };
 
-  // ── TABS RENDER ──────────────────────────────────────────────────────────
+  // ── Tabs config ───────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'fotos',    label: 'Fotos',    icon: <Camera className="w-4 h-4" /> },
     { id: 'produtos', label: 'Produtos', icon: <UtensilsCrossed className="w-4 h-4" /> },
@@ -214,38 +254,33 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <Card className="bg-zinc-900 border-zinc-800 w-full max-w-4xl max-h-[92vh] overflow-y-auto">
 
-        {/* ── Cabeçalho ── */}
+        {/* Cabeçalho */}
         <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-4 flex items-center justify-between z-10">
           <h2 className="text-xl font-bold">⚙️ Painel Admin</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="w-5 h-5" /></Button>
         </div>
 
-        {/* ── Tabs ── */}
+        {/* Tabs */}
         <div className="flex border-b border-zinc-800 px-4 pt-2 gap-1">
           {tabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all border-b-2 ${
                 activeTab === t.id
                   ? 'border-red-500 text-red-400 bg-zinc-800'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
+              }`}>
               {t.icon} {t.label}
             </button>
           ))}
         </div>
 
-        {/* ══════════════════════════════════════════════════════
-            TAB: FOTOS
-        ══════════════════════════════════════════════════════ */}
+        {/* ══ TAB: FOTOS ══ */}
         {activeTab === 'fotos' && (
           <>
             <div className="mx-6 mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <p className="text-sm text-blue-300">
                 💡 <strong>Como usar:</strong> Clique em <strong>"Adicionar Foto"</strong>,
-                escolha a foto (até 32MB, suporta 4K). Ela vai para a nuvem e aparece em todos os dispositivos.
+                escolha a foto. Ela vai para a nuvem e aparece em <strong>todos os dispositivos</strong> automaticamente.
               </p>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -299,26 +334,22 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
           </>
         )}
 
-        {/* ══════════════════════════════════════════════════════
-            TAB: PRODUTOS
-        ══════════════════════════════════════════════════════ */}
+        {/* ══ TAB: PRODUTOS ══ */}
         {activeTab === 'produtos' && (
           <div className="p-6 space-y-3">
             <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mb-4">
               <p className="text-sm text-yellow-300">
-                ✏️ Edite nome, preço e descrição de cada produto. Use o botão 👁️ para ocultar/mostrar no cardápio.
+                ✏️ Edite nome, preço e descrição. Use 👁️ para ocultar/mostrar no cardápio.
               </p>
             </div>
             {products.map(product => {
-              const ov       = overrides[product.id] || {};
-              const isActive = ov.active ?? true;
+              const ov        = overrides[product.id] || {};
+              const isActive  = ov.active ?? true;
               const isEditing = editingId === product.id;
               const hasOverride = Object.keys(ov).length > 0;
-
               return (
                 <Card key={product.id}
                   className={`bg-zinc-800 border-zinc-700 p-4 transition-all ${!isActive ? 'opacity-50' : ''}`}>
-
                   {isEditing ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-1">
@@ -359,14 +390,10 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-bold text-sm">{ov.name ?? product.name}</h3>
                           {hasOverride && (
-                            <span className="text-[10px] bg-yellow-900/50 border border-yellow-600/40 text-yellow-400 px-1.5 py-0.5 rounded">
-                              editado
-                            </span>
+                            <span className="text-[10px] bg-yellow-900/50 border border-yellow-600/40 text-yellow-400 px-1.5 py-0.5 rounded">editado</span>
                           )}
                           {!isActive && (
-                            <span className="text-[10px] bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded">
-                              oculto
-                            </span>
+                            <span className="text-[10px] bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded">oculto</span>
                           )}
                         </div>
                         <p className="text-red-400 font-bold text-sm mt-0.5">
@@ -380,14 +407,12 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                         <Button size="sm" variant="ghost"
                           onClick={() => toggleActive(product.id)}
                           className="px-2 text-zinc-400 hover:text-white"
-                          title={isActive ? 'Ocultar do cardápio' : 'Mostrar no cardápio'}>
+                          title={isActive ? 'Ocultar' : 'Mostrar'}>
                           {isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </Button>
                         <Button size="sm" variant="ghost"
                           onClick={() => startEdit(product.id)}
-                          className="px-2 text-zinc-400 hover:text-white">
-                          ✏️
-                        </Button>
+                          className="px-2 text-zinc-400 hover:text-white">✏️</Button>
                         {hasOverride && (
                           <Button size="sm" variant="ghost"
                             onClick={() => resetProduct(product.id)}
@@ -405,70 +430,77 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════
-            TAB: LOJA
-        ══════════════════════════════════════════════════════ */}
+        {/* ══ TAB: LOJA ══ */}
         {activeTab === 'loja' && (
           <div className="p-6 max-w-lg space-y-4">
-
-            {/* ✅ Aviso explicativo */}
-            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-              <p className="text-sm text-blue-300">
-                📌 <strong>Dados fixos no código.</strong> As informações abaixo são exibidas para todos os clientes.
-                Para alterar permanentemente, edite <code className="bg-zinc-800 px-1 rounded">DEFAULT_CONFIG</code> em{' '}
-                <code className="bg-zinc-800 px-1 rounded">client/src/lib/storeConfig.ts</code> e faça deploy.
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+              <p className="text-sm text-green-300">
+                ✅ <strong>Dados salvos na nuvem.</strong> Alterações aparecem em todos os dispositivos imediatamente.
               </p>
             </div>
-
-            {/* Campos somente leitura mostrando os valores atuais do código */}
-            <div className="space-y-4 opacity-80">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-zinc-400">Bairro</Label>
-                  <Input value={storeForm.neighborhood} readOnly
-                    className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
+            {storeForm ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-zinc-400">Bairro</Label>
+                    <Input value={storeForm.neighborhood}
+                      onChange={e => setStoreForm(f => f ? ({ ...f, neighborhood: e.target.value }) : f)}
+                      className="bg-zinc-800 border-zinc-700 mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-zinc-400">Cidade</Label>
+                    <Input value={storeForm.city}
+                      onChange={e => setStoreForm(f => f ? ({ ...f, city: e.target.value }) : f)}
+                      className="bg-zinc-800 border-zinc-700 mt-1" />
+                  </div>
                 </div>
                 <div>
-                  <Label className="text-xs text-zinc-400">Cidade</Label>
-                  <Input value={storeForm.city} readOnly
-                    className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
+                  <Label className="text-xs text-zinc-400">Estado (ex: SC)</Label>
+                  <Input value={storeForm.state}
+                    onChange={e => setStoreForm(f => f ? ({ ...f, state: e.target.value }) : f)}
+                    className="bg-zinc-800 border-zinc-700 mt-1" />
                 </div>
-              </div>
-              <div>
-                <Label className="text-xs text-zinc-400">Endereço completo</Label>
-                <Input value={storeForm.address} readOnly
-                  className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
-              </div>
-              <div>
-                <Label className="text-xs text-zinc-400">Horário de funcionamento</Label>
-                <Input value={storeForm.hours} readOnly
-                  className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
-              </div>
-              <div>
-                <Label className="text-xs text-zinc-400">Número WhatsApp (com DDI, sem +)</Label>
-                <Input value={storeForm.whatsappNumber} readOnly
-                  className="bg-zinc-800 border-zinc-700 mt-1 cursor-default" />
-              </div>
-              <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg border border-zinc-700">
                 <div>
-                  <p className="text-sm font-semibold">Status da loja</p>
-                  <p className="text-xs text-zinc-500">Exibe "Aberto agora" ou "Fechado"</p>
+                  <Label className="text-xs text-zinc-400">Endereço completo</Label>
+                  <Input value={storeForm.address}
+                    onChange={e => setStoreForm(f => f ? ({ ...f, address: e.target.value }) : f)}
+                    className="bg-zinc-800 border-zinc-700 mt-1" />
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  storeForm.isOpen ? 'bg-green-700 text-green-100' : 'bg-zinc-600 text-zinc-300'
-                }`}>
-                  {storeForm.isOpen ? 'Aberto' : 'Fechado'}
-                </span>
+                <div>
+                  <Label className="text-xs text-zinc-400">Horário de funcionamento</Label>
+                  <Input value={storeForm.hours}
+                    onChange={e => setStoreForm(f => f ? ({ ...f, hours: e.target.value }) : f)}
+                    className="bg-zinc-800 border-zinc-700 mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs text-zinc-400">WhatsApp (com DDI, sem +)</Label>
+                  <Input value={storeForm.whatsappNumber}
+                    onChange={e => setStoreForm(f => f ? ({ ...f, whatsappNumber: e.target.value }) : f)}
+                    className="bg-zinc-800 border-zinc-700 mt-1" />
+                </div>
+                <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg border border-zinc-700">
+                  <div>
+                    <p className="text-sm font-semibold">Status da loja</p>
+                    <p className="text-xs text-zinc-500">Exibe "Aberto agora" ou "Fechado"</p>
+                  </div>
+                  <button
+                    onClick={() => setStoreForm(f => f ? ({ ...f, isOpen: !f.isOpen }) : f)}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                      storeForm.isOpen ? 'bg-green-700 text-green-100' : 'bg-zinc-600 text-zinc-300'
+                    }`}>
+                    {storeForm.isOpen ? '🟢 Aberto' : '🔴 Fechado'}
+                  </button>
+                </div>
+                <Button onClick={handleSaveStore} disabled={savingStore}
+                  className="w-full bg-green-600 hover:bg-green-700 gap-2">
+                  {savingStore
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</>
+                    : <><Save className="w-4 h-4" /> Salvar na nuvem</>}
+                </Button>
               </div>
-            </div>
-
-            {/* Botão informativo */}
-            <Button
-              onClick={handleSaveStore}
-              variant="outline"
-              className="w-full border-blue-600 text-blue-400 hover:bg-blue-950 gap-2">
-              <Save className="w-4 h-4" /> Como alterar estes dados?
-            </Button>
+            ) : (
+              <p className="text-zinc-400 text-sm">Carregando configurações...</p>
+            )}
           </div>
         )}
 
