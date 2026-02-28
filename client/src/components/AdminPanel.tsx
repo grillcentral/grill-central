@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/AdminPanel.tsx << 'ENDOFFILE'
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
