@@ -1,4 +1,5 @@
-// client/src/lib/storeConfig.ts
+import { supabase } from './supabase';
+
 export interface StoreConfig {
   name: string;
   neighborhood: string;
@@ -21,16 +22,41 @@ export const DEFAULT_CONFIG: StoreConfig = {
   isOpen: true,
 };
 
-
-export function getStoreConfig(): StoreConfig {
+export async function getStoreConfig(): Promise<StoreConfig> {
   try {
-    const stored = localStorage.getItem('storeConfig');
-    if (stored) return { ...DEFAULT_CONFIG, ...JSON.parse(stored) };
-  } catch {}
-  return DEFAULT_CONFIG;
+    const { data, error } = await supabase
+      .from('store_config')
+      .select('*')
+      .eq('id', 1)
+      .single();
+    if (error || !data) return { ...DEFAULT_CONFIG };
+    return {
+      name: data.name ?? DEFAULT_CONFIG.name,
+      neighborhood: data.neighborhood ?? DEFAULT_CONFIG.neighborhood,
+      city: data.city ?? DEFAULT_CONFIG.city,
+      state: data.state ?? DEFAULT_CONFIG.state,
+      address: data.address ?? DEFAULT_CONFIG.address,
+      hours: data.hours ?? DEFAULT_CONFIG.hours,
+      whatsappNumber: data.whatsapp_number ?? DEFAULT_CONFIG.whatsappNumber,
+      isOpen: data.is_open ?? DEFAULT_CONFIG.isOpen,
+    };
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
 }
 
-export function saveStoreConfig(config: StoreConfig) {
-  localStorage.setItem('storeConfig', JSON.stringify(config));
-  window.dispatchEvent(new Event('storeConfigUpdated'));
+export async function saveStoreConfig(config: StoreConfig): Promise<void> {
+  const { error } = await supabase.from('store_config').upsert({
+    id: 1,
+    name: config.name,
+    neighborhood: config.neighborhood,
+    city: config.city,
+    state: config.state,
+    address: config.address,
+    hours: config.hours,
+    whatsapp_number: config.whatsappNumber,
+    is_open: config.isOpen,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
 }
