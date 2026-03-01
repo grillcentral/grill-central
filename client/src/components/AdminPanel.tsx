@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -107,7 +107,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const refreshOverrides = () => setOverrides(getProductOverrides());
 
   // ── Tab: Loja ──
-  const [storeForm, setStoreForm]   = useState<StoreConfig | null>(null);
+  const [storeForm, setStoreForm]     = useState<StoreConfig | null>(null);
   const [savingStore, setSavingStore] = useState(false);
 
   // Carrega imagens e config da loja ao autenticar
@@ -139,9 +139,15 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <Label htmlFor="password">Senha</Label>
-              <Input id="password" type="password" value={password}
+              <Input
+                id="password"
+                type="password"
+                value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Digite a senha" autoFocus required />
+                placeholder="Digite a senha"
+                autoFocus
+                required
+              />
             </div>
             <Button type="submit" className="w-full bg-red-600 hover:bg-red-700">Entrar</Button>
           </form>
@@ -203,13 +209,19 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const saveEdit = (id: string) => {
     const price = parseFloat(editForm.price.replace(',', '.'));
     if (isNaN(price) || price <= 0) { toast.error('Preço inválido!'); return; }
+
     saveProductOverride(id, {
       name:        editForm.name.trim(),
       price,
       description: editForm.description.trim(),
     });
+
     refreshOverrides();
     setEditingId(null);
+
+    // ✅ avisa o Home para recarregar overrides
+    window.dispatchEvent(new Event('productOverridesUpdated'));
+
     toast.success('✅ Produto atualizado!');
   };
 
@@ -217,6 +229,10 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     resetProductOverride(id);
     refreshOverrides();
     if (editingId === id) setEditingId(null);
+
+    // ✅ avisa o Home para recarregar overrides
+    window.dispatchEvent(new Event('productOverridesUpdated'));
+
     toast.info('↩️ Produto restaurado ao padrão.');
   };
 
@@ -224,6 +240,10 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     const current = overrides[id]?.active ?? true;
     saveProductOverride(id, { active: !current });
     refreshOverrides();
+
+    // ✅ avisa o Home para recarregar overrides
+    window.dispatchEvent(new Event('productOverridesUpdated'));
+
     toast.success(current ? '🙈 Produto ocultado.' : '👁️ Produto visível.');
   };
 
@@ -233,7 +253,10 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     setSavingStore(true);
     try {
       await saveStoreConfig(storeForm);
+
+      // ✅ avisa o Home para recarregar config
       window.dispatchEvent(new Event('storeConfigUpdated'));
+
       toast.success('✅ Dados da loja salvos em todos os dispositivos!');
     } catch (err: any) {
       toast.error(`❌ Erro ao salvar: ${err.message}`);
@@ -262,12 +285,15 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
         {/* Tabs */}
         <div className="flex border-b border-zinc-800 px-4 pt-2 gap-1">
           {tabs.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all border-b-2 ${
                 activeTab === t.id
                   ? 'border-red-500 text-red-400 bg-zinc-800'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
-              }`}>
+              }`}
+            >
               {t.icon} {t.label}
             </button>
           ))}
@@ -307,21 +333,31 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <Input type="file" accept="image/*" id={`upload-${product.id}`}
-                        className="hidden" disabled={isUploading}
-                        onChange={e => handleFileChange(e, product.id, product.name)} />
-                      <Label htmlFor={`upload-${product.id}`}
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        id={`upload-${product.id}`}
+                        className="hidden"
+                        disabled={isUploading}
+                        onChange={e => handleFileChange(e, product.id, product.name)}
+                      />
+                      <Label
+                        htmlFor={`upload-${product.id}`}
                         className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-md px-4 py-2 text-sm font-medium text-white transition-colors ${
                           isUploading ? 'bg-zinc-600 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'
-                        }`}>
+                        }`}
+                      >
                         {isUploading
                           ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
                           : <><Upload className="w-4 h-4" /> {currentImage ? 'Trocar Foto' : 'Adicionar Foto'}</>}
                       </Label>
                       {currentImage && !isUploading && (
-                        <Button variant="outline" size="sm"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleRemoveImage(product.id)}
-                          className="px-3 border-zinc-600 hover:bg-red-950 hover:border-red-800">
+                          className="px-3 border-zinc-600 hover:bg-red-950 hover:border-red-800"
+                        >
                           <Trash2 className="w-4 h-4 text-red-400" />
                         </Button>
                       )}
@@ -342,13 +378,15 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
               </p>
             </div>
             {products.map(product => {
-              const ov        = overrides[product.id] || {};
-              const isActive  = ov.active ?? true;
-              const isEditing = editingId === product.id;
+              const ov          = overrides[product.id] || {};
+              const isActive    = ov.active ?? true;
+              const isEditing   = editingId === product.id;
               const hasOverride = Object.keys(ov).length > 0;
               return (
-                <Card key={product.id}
-                  className={`bg-zinc-800 border-zinc-700 p-4 transition-all ${!isActive ? 'opacity-50' : ''}`}>
+                <Card
+                  key={product.id}
+                  className={`bg-zinc-800 border-zinc-700 p-4 transition-all ${!isActive ? 'opacity-50' : ''}`}
+                >
                   {isEditing ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-1">
@@ -357,21 +395,29 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                       </div>
                       <div>
                         <Label className="text-xs text-zinc-400">Nome</Label>
-                        <Input value={editForm.name}
+                        <Input
+                          value={editForm.name}
                           onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                          className="bg-zinc-700 border-zinc-600 mt-1" />
+                          className="bg-zinc-700 border-zinc-600 mt-1"
+                        />
                       </div>
                       <div>
                         <Label className="text-xs text-zinc-400">Preço (R$)</Label>
-                        <Input value={editForm.price}
+                        <Input
+                          value={editForm.price}
                           onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))}
-                          className="bg-zinc-700 border-zinc-600 mt-1" placeholder="29.90" />
+                          className="bg-zinc-700 border-zinc-600 mt-1"
+                          placeholder="29.90"
+                        />
                       </div>
                       <div>
                         <Label className="text-xs text-zinc-400">Descrição</Label>
-                        <Textarea value={editForm.description}
+                        <Textarea
+                          value={editForm.description}
                           onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-                          className="bg-zinc-700 border-zinc-600 mt-1 resize-none" rows={2} />
+                          className="bg-zinc-700 border-zinc-600 mt-1 resize-none"
+                          rows={2}
+                        />
                       </div>
                       <div className="flex gap-2 pt-1">
                         <Button size="sm" onClick={() => saveEdit(product.id)}
@@ -486,7 +532,8 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                     onClick={() => setStoreForm(f => f ? ({ ...f, isOpen: !f.isOpen }) : f)}
                     className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
                       storeForm.isOpen ? 'bg-green-700 text-green-100' : 'bg-zinc-600 text-zinc-300'
-                    }`}>
+                    }`}
+                  >
                     {storeForm.isOpen ? '🟢 Aberto' : '🔴 Fechado'}
                   </button>
                 </div>
