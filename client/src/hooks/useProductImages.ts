@@ -1,34 +1,48 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
 
-export function useProductImages(): Record<string, string> {
-  const [images, setImages] = useState<Record<string, string>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('productImages') || '{}');
-    } catch {
-      return {};
-    }
-  });
+type ImageMap = Record<string, string>
+
+async function fetchImages(): Promise<ImageMap> {
+  const { data, error } = await supabase
+    .from("product_images")
+    .select("id, image_url")
+
+  if (error) {
+    console.error("[useProductImages] Supabase error:", error)
+    return {}
+  }
+
+  const map: ImageMap = {}
+  for (const row of data ?? []) {
+    if (row?.id && row?.image_url) map[String(row.id)] = String(row.image_url)
+  }
+  return map
+}
+
+export function useProductImages(): ImageMap {
+  const [images, setImages] = useState<ImageMap>({})
 
   useEffect(() => {
-    const loadImages = () => {
-      try {
-        const saved = localStorage.getItem('productImages');
-        setImages(saved ? JSON.parse(saved) : {});
-      } catch (e) {
-        console.error('Erro ao carregar imagens:', e);
-      }
-    };
+    let alive = true
 
-    // Escuta mudanças feitas em outras abas do navegador
-    window.addEventListener('storage', loadImages);
-    // Escuta evento disparado pelo AdminPanel após upload
-    window.addEventListener('productImagesUpdated', loadImages);
+    const load = async () => {
+      const map = await fetchImages()
+      if (alive) setImages(map)
+    }
+
+    // carrega ao abrir
+    load()
+
+    // recarrega quando o AdminPanel terminar upload/remove
+    const onUpdated = () => load()
+    window.addEventListener("productImagesUpdated", onUpdated)
 
     return () => {
-      window.removeEventListener('storage', loadImages);
-      window.removeEventListener('productImagesUpdated', loadImages);
-    };
-  }, []);
+      alive = false
+      window.removeEventListener("productImagesUpdated", onUpdated)
+    }
+  }, [])
 
-  return images;
+  return images
 }
