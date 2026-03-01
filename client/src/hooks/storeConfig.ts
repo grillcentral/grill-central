@@ -12,7 +12,7 @@ export interface StoreConfig {
   isOpen: boolean
 }
 
-const CONFIG_ID = "main"
+const CONFIG_ID = 1
 
 export const DEFAULT_CONFIG: StoreConfig = {
   name: "GRILL CENTRAL",
