@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   X, Upload, Loader2, Trash2, CheckCircle, Cloud,
-  Camera, Store, UtensilsCrossed, Save, RotateCcw, Eye, EyeOff
+  Camera, Store, UtensilsCrossed, Save, RotateCcw, Eye, EyeOff, LogOut, Mail, KeyRound
 } from 'lucide-react';
 import { products } from '@/data/products';
 import { toast } from 'sonner';
@@ -18,7 +18,9 @@ interface AdminPanelProps {
   onClose: () => void;
 }
 
-const ADMIN_PASSWORD = '@grill2025';
+// ✅ seu UID admin (único que pode escrever por causa do RLS)
+const ADMIN_UID = '51d8cee2-bfcd-4820-8dc4-7e94b9c45b53';
+
 const IMGBB_API_KEY = '168636329f99c2f019368c3c7d628d83';
 const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload';
 
@@ -93,8 +95,12 @@ async function uploadToImgBB(base64: string, name: string): Promise<string> {
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function AdminPanel({ onClose }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword]               = useState('');
   const [activeTab, setActiveTab]             = useState<Tab>('fotos');
+
+  // Login fields (Supabase Auth)
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
   // ── Tab: Fotos ──
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -110,6 +116,26 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const [storeForm, setStoreForm]     = useState<StoreConfig | null>(null);
   const [savingStore, setSavingStore] = useState(false);
 
+  // ✅ Checa sessão ao abrir o painel (persistência)
+  useEffect(() => {
+    let alive = true;
+
+    const check = async () => {
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user?.id;
+      if (!alive) return;
+
+      if (uid && uid === ADMIN_UID) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    };
+
+    check();
+    return () => { alive = false; };
+  }, []);
+
   // Carrega imagens e config da loja ao autenticar
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -117,14 +143,45 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     getStoreConfig().then(setStoreForm);
   }, [isAuthenticated]);
 
-  // ── Login ─────────────────────────────────────────────────────────────────
-  const handleLogin = (e: React.FormEvent) => {
+  // ── Login (Supabase) ───────────────────────────────────────────────────────
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
+    setLoggingIn(true);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) throw error;
+
+      const uid = data.user?.id;
+
+      if (uid !== ADMIN_UID) {
+        await supabase.auth.signOut();
+        toast.error('❌ Sem permissão de admin neste usuário.');
+        setIsAuthenticated(false);
+        return;
+      }
+
       setIsAuthenticated(true);
-      toast.success('✅ Login realizado!');
-    } else {
-      toast.error('❌ Senha incorreta!');
+      toast.success('✅ Admin autenticado (Supabase)!');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`❌ Login falhou: ${err.message}`);
+      setIsAuthenticated(false);
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setIsAuthenticated(false);
+      toast.success('✅ Saiu do admin.');
+    } catch (err: any) {
+      toast.error(`❌ Erro ao sair: ${err.message}`);
     }
   };
 
@@ -136,20 +193,52 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
             <h2 className="text-2xl font-bold">🔐 Painel Admin</h2>
             <Button variant="ghost" size="icon" onClick={onClose}><X className="w-5 h-5" /></Button>
           </div>
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Digite a senha"
-                autoFocus
-                required
-              />
+              <Label htmlFor="email">E-mail</Label>
+              <div className="relative mt-1">
+                <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="seuemail@exemplo.com"
+                  className="pl-9"
+                  autoFocus
+                  required
+                />
+              </div>
             </div>
-            <Button type="submit" className="w-full bg-red-600 hover:bg-red-700">Entrar</Button>
+
+            <div>
+              <Label htmlFor="password">Senha</Label>
+              <div className="relative mt-1">
+                <KeyRound className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Digite a senha"
+                  className="pl-9"
+                  required
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full bg-red-600 hover:bg-red-700 gap-2"
+              disabled={loggingIn}
+            >
+              {loggingIn ? <><Loader2 className="w-4 h-4 animate-spin" /> Entrando...</> : 'Entrar'}
+            </Button>
+
+            <p className="text-xs text-zinc-500">
+              Obs: agora o admin é protegido por login real (Supabase Auth). Sem login, o RLS bloqueia salvar.
+            </p>
           </form>
         </Card>
       </div>
@@ -166,11 +255,14 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     if (!file) return;
     if (file.size > 32 * 1024 * 1024) { toast.error('Imagem muito grande! Máximo 32MB.'); return; }
     setUploadingId(productId);
+
     try {
       toast.info('📤 Enviando para a nuvem...');
       const base64 = await resizeImage(file);
       const url    = await uploadToImgBB(base64, productName);
+
       await saveImageUrl(productId, url);
+
       setImages(prev => ({ ...prev, [productId]: url }));
       window.dispatchEvent(new Event('productImagesUpdated'));
       toast.success('✅ Foto salva! Visível em todos os dispositivos.');
@@ -218,8 +310,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
 
     refreshOverrides();
     setEditingId(null);
-
-    // ✅ avisa o Home para recarregar overrides
     window.dispatchEvent(new Event('productOverridesUpdated'));
 
     toast.success('✅ Produto atualizado!');
@@ -230,9 +320,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     refreshOverrides();
     if (editingId === id) setEditingId(null);
 
-    // ✅ avisa o Home para recarregar overrides
     window.dispatchEvent(new Event('productOverridesUpdated'));
-
     toast.info('↩️ Produto restaurado ao padrão.');
   };
 
@@ -241,9 +329,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     saveProductOverride(id, { active: !current });
     refreshOverrides();
 
-    // ✅ avisa o Home para recarregar overrides
     window.dispatchEvent(new Event('productOverridesUpdated'));
-
     toast.success(current ? '🙈 Produto ocultado.' : '👁️ Produto visível.');
   };
 
@@ -251,12 +337,10 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const handleSaveStore = async () => {
     if (!storeForm) return;
     setSavingStore(true);
+
     try {
       await saveStoreConfig(storeForm);
-
-      // ✅ avisa o Home para recarregar config
       window.dispatchEvent(new Event('storeConfigUpdated'));
-
       toast.success('✅ Dados da loja salvos em todos os dispositivos!');
     } catch (err: any) {
       toast.error(`❌ Erro ao salvar: ${err.message}`);
@@ -278,8 +362,19 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
 
         {/* Cabeçalho */}
         <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-4 flex items-center justify-between z-10">
-          <h2 className="text-xl font-bold">⚙️ Painel Admin</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="w-5 h-5" /></Button>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold">⚙️ Painel Admin</h2>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 border border-green-700/40 text-green-300">
+              Supabase Auth
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleLogout} className="border-zinc-700 hover:bg-zinc-800 gap-2">
+              <LogOut className="w-4 h-4" /> Sair
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onClose}><X className="w-5 h-5" /></Button>
+          </div>
         </div>
 
         {/* Tabs */}
