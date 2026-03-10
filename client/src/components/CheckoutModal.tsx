@@ -329,7 +329,7 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
             {formData.deliveryType === 'delivery' && !location && (
               <p className="text-xs text-yellow-500">
                 ⚠️ Envie sua localização para calcular o frete
-              p>
+              </p>
             )}
             <div className="flex justify-between text-xl font-bold pt-2">
               <span>Total:</span>
