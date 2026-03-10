@@ -1,165 +1,311 @@
-import { useState, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useRef } from "react"
+import { Button } from "@/components/ui/button"
 import {
-  ShoppingCart, Settings, Plus, Minus, Trash2, X,
-  MapPin, Clock, MessageCircle, Star,
-  ChevronRight
-} from 'lucide-react';
-import { products } from '@/data/products';
-import { useCart } from '@/contexts/CartContext';
-import { useProductImages } from '@/hooks/useProductImages';
-import { useStoreConfig } from '@/hooks/useStoreConfig';
-import CheckoutModal from '@/components/CheckoutModal';
-import AdminPanel from '@/components/AdminPanel';
-import { getProductOverrides } from '@/lib/productOverrides';
-import SiteHeader from '@/components/SiteHeader';
+  ShoppingCart,
+  Settings,
+  Plus,
+  Minus,
+  Trash2,
+  X,
+  MapPin,
+  Clock,
+  MessageCircle,
+  Star,
+  Phone,
+  ChevronRight,
+} from "lucide-react"
+import { products } from "@/data/products"
+import { useCart } from "@/contexts/CartContext"
+import { useProductImages } from "@/hooks/useProductImages"
+import { useStoreConfig } from "@/hooks/useStoreConfig"
+import CheckoutModal from "@/components/CheckoutModal"
+import AdminPanel from "@/components/AdminPanel"
+import { getProductOverrides } from "@/lib/productOverrides"
 
 const CATEGORY_ICONS: Record<string, string> = {
-  'XIS': '🍔',
-  'LINHA ALHO NEGRO': '🧄',
-  'PORÇÕES': '🍟',
-  'BEBIDAS GELADAS': '🥤',
-};
+  XIS: "🍔",
+  "LINHA ALHO NEGRO": "🧄",
+  PORÇÕES: "🍟",
+  "BEBIDAS GELADAS": "🥤",
+}
 
 const CATEGORY_BADGE: Record<string, { label: string; color: string }> = {
-  'LINHA ALHO NEGRO': { label: '👨‍🍳 CHEF INDICA', color: 'bg-purple-900 border-purple-500 text-purple-200' },
-};
+  "LINHA ALHO NEGRO": {
+    label: "👨‍🍳 CHEF INDICA",
+    color: "bg-purple-900 border-purple-500 text-purple-200",
+  },
+}
 
-const DESTAQUES = ['xis-bacon', 'xis-file-mignon', 'xis-camarao'];
-const KIDS_BADGE = ['xis-kids'];
+const DESTAQUES = ["xis-bacon", "xis-file-mignon", "xis-camarao"]
+const KIDS_BADGE = ["xis-kids"]
 
 export default function Home() {
-  const { items, addItem, updateQuantity, removeItem, total } = useCart();
-  const productImages = useProductImages();
-  const storeConfig   = useStoreConfig();
+  const { items, addItem, updateQuantity, removeItem, total } = useCart()
+  const productImages = useProductImages()
+  const storeConfig = useStoreConfig()
 
-  const [selectedCategory, setSelectedCategory] = useState<string>('XIS');
-  const [showCart,     setShowCart]     = useState(false);
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [showAdmin,    setShowAdmin]    = useState(false);
-  const [overrides,    setOverrides]    = useState(getProductOverrides);
-  const categoryBarRef = useRef<HTMLDivElement>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>("XIS")
+  const [showCart, setShowCart] = useState(false)
+  const [showCheckout, setShowCheckout] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
+  const [overrides, setOverrides] = useState(getProductOverrides)
+  const categoryBarRef = useRef<HTMLDivElement>(null)
 
   // Atualiza overrides quando produtos são editados no admin
   useEffect(() => {
-    const handler = () => setOverrides(getProductOverrides());
-    window.addEventListener('productOverridesUpdated', handler);
-    return () => window.removeEventListener('productOverridesUpdated', handler);
-  }, []);
+    const handler = () => setOverrides(getProductOverrides())
+    window.addEventListener("productOverridesUpdated", handler)
+    return () => window.removeEventListener("productOverridesUpdated", handler)
+  }, [])
 
-  const WHATSAPP_NUMBER = storeConfig.whatsappNumber;
-  const whatsappUrl = WHATSAPP_NUMBER ? `https://wa.me/${WHATSAPP_NUMBER}` : undefined;
+  const WHATSAPP_NUMBER = storeConfig.whatsappNumber
 
   const categories = [
-    { id: 'XIS',              label: 'XIS' },
-    { id: 'LINHA ALHO NEGRO', label: 'ALHO NEGRO' },
-    { id: 'PORÇÕES',          label: 'PORÇÕES' },
-    { id: 'BEBIDAS GELADAS',  label: 'BEBIDAS' },
-  ];
+    { id: "XIS", label: "XIS" },
+    { id: "LINHA ALHO NEGRO", label: "ALHO NEGRO" },
+    { id: "PORÇÕES", label: "PORÇÕES" },
+    { id: "BEBIDAS GELADAS", label: "BEBIDAS" },
+  ]
 
   // Aplica overrides e filtra inativos
   const mergedProducts = products
-    .map(p => {
-      const ov = overrides[p.id] || {};
+    .map((p) => {
+      const ov = overrides[p.id] || {}
       return {
         ...p,
-        name:        ov.name        ?? p.name,
-        price:       ov.price       ?? p.price,
+        name: ov.name ?? p.name,
+        price: ov.price ?? p.price,
         description: ov.description ?? p.description,
-        active:      ov.active      ?? true,
-      };
+        active: ov.active ?? true,
+      }
     })
-    .filter(p => p.active);
+    .filter((p) => p.active)
 
-  const filteredProducts = mergedProducts.filter(p => p.category === selectedCategory);
-  const cartItemCount    = items.reduce((sum, i) => sum + i.quantity, 0);
+  const filteredProducts = mergedProducts.filter(
+    (p) => p.category === selectedCategory
+  )
+  const cartItemCount = items.reduce((sum, i) => sum + i.quantity, 0)
 
   const handleWhatsApp = () => {
-    if (!WHATSAPP_NUMBER) return;
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}`, '_blank');
-  };
+    if (!WHATSAPP_NUMBER) return
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}`, "_blank")
+  }
 
   const pedirDiretoWhatsApp = (name: string, price: number) => {
-    if (!WHATSAPP_NUMBER) return;
+    if (!WHATSAPP_NUMBER) return
     const msg = encodeURIComponent(
-      `Olá! Gostaria de pedir:\n\n🍔 *${name}* — R$ ${price.toFixed(2).replace('.', ',')}\n\nAguardo confirmação! 😊`
-    );
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
-  };
+      `Olá! Gostaria de pedir:\n\n🍔 *${name}* — R$ ${price
+        .toFixed(2)
+        .replace(".", ",")}\n\nAguardo confirmação! 😊`
+    )
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, "_blank")
+  }
 
   useEffect(() => {
-    if (!categoryBarRef.current) return;
-    const activeBtn = categoryBarRef.current.querySelector('[data-active="true"]') as HTMLElement;
-    if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  }, [selectedCategory]);
+    if (!categoryBarRef.current) return
+    const activeBtn = categoryBarRef.current.querySelector(
+      '[data-active="true"]'
+    ) as HTMLElement
+    if (activeBtn)
+      activeBtn.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      })
+  }, [selectedCategory])
+
+  const name = storeConfig.name || "GRILL CENTRAL"
+  const subtitle = `${storeConfig.neighborhood || "centro"} • ${
+    storeConfig.city || "Forquilhinha"
+  }, ${storeConfig.state || "SC"}`
+  const hours = storeConfig.hours || "Qua–Dom 18:30h–23:00h"
+  const address = storeConfig.address || "Rua Cinquentenário, 15"
+  const isOpen = !!storeConfig.isOpen
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
+      {/* BANNER HERO (HEADER ANTIGO) */}
+      <div className="relative w-full" style={{ minHeight: 150 }}>
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(135deg, #1a0000 0%, #450a0a 45%, #7f1d1d 100%)",
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "linear-gradient(to top, #09090b 0%, transparent 55%)",
+          }}
+        />
 
-      {/* HEADER PROFISSIONAL */}
-      <SiteHeader
-        name={storeConfig.name || "GRILL CENTRAL"}
-        subtitle={`${storeConfig.neighborhood || "centro"} • ${storeConfig.city || "Forquilhinha"}, ${storeConfig.state || "SC"}`}
-        isOpen={!!storeConfig.isOpen}
-        hoursText={storeConfig.hours || "Qua–Dom 18:30h–23:00h"}
-        addressText={storeConfig.address || "Rua Cinquentenário, 15"}
-        whatsappUrl={whatsappUrl || "https://wa.me/5548999999999"}
-        onOpenAdmin={() => setShowAdmin(true)}
-      />
+        <div className="absolute top-3 right-3 flex gap-1 z-50">
+          <button
+            onClick={handleWhatsApp}
+            disabled={!WHATSAPP_NUMBER}
+            className={`w-9 h-9 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white transition ${
+              WHATSAPP_NUMBER
+                ? "hover:bg-black/50"
+                : "opacity-40 cursor-not-allowed"
+            }`}
+            title="WhatsApp"
+          >
+            <Phone className="w-4 h-4" />
+          </button>
 
-      {/* ABAS DE CATEGORIA (sticky abaixo do header) */}
+          <button
+            onClick={() => setShowAdmin(true)}
+            className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-600 backdrop-blur-sm flex items-center justify-center text-white hover:bg-zinc-600 transition"
+            title="Admin"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 pt-6 pb-4 flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            {/* LOGO NO LUGAR DO ÍCONE */}
+            <div
+              className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0 border border-white/10 bg-black/20"
+              style={{ boxShadow: "0 0 20px rgba(220,38,38,0.35)" }}
+            >
+              <img
+                src="/logo.png"
+                alt={name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-black tracking-wide leading-tight">
+                {name}
+              </h1>
+              <p className="text-red-300 text-xs font-medium">{subtitle}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-1">
+            <span
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border"
+              style={
+                isOpen
+                  ? {
+                      background: "rgba(34,197,94,0.15)",
+                      borderColor: "rgba(34,197,94,0.3)",
+                      color: "#86efac",
+                    }
+                  : {
+                      background: "rgba(239,68,68,0.15)",
+                      borderColor: "rgba(239,68,68,0.3)",
+                      color: "#fca5a5",
+                    }
+              }
+            >
+              {isOpen ? "🟢 Aberto agora" : "🔴 Fechado"}
+            </span>
+
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border border-white/15 bg-white/10 text-zinc-300">
+              <Clock className="w-3 h-3" /> {hours}
+            </span>
+
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border border-white/15 bg-white/10 text-zinc-300">
+              <MapPin className="w-3 h-3" /> {address}
+            </span>
+          </div>
+
+          <button
+            onClick={handleWhatsApp}
+            disabled={!WHATSAPP_NUMBER}
+            className={`self-start flex items-center gap-2 text-white text-sm font-bold px-4 py-2 rounded-full transition-all mt-1 ${
+              WHATSAPP_NUMBER
+                ? "bg-green-500 hover:bg-green-400 active:bg-green-600"
+                : "bg-zinc-700 opacity-50 cursor-not-allowed"
+            }`}
+            style={
+              WHATSAPP_NUMBER
+                ? {
+                    boxShadow: "0 0 14px rgba(34,197,94,0.5)",
+                    animation: "pulse-green 2s infinite",
+                  }
+                : undefined
+            }
+          >
+            <MessageCircle className="w-4 h-4" />
+            Falar no WhatsApp
+          </button>
+        </div>
+      </div>
+
+      {/* ABAS DE CATEGORIA (VOLTA AO TOPO COMO ANTES) */}
       <div
         ref={categoryBarRef}
-        className="sticky top-[92px] z-30 flex gap-1 overflow-x-auto bg-zinc-950 border-b border-zinc-800 px-3 scrollbar-hide"
-        style={{ scrollbarWidth: 'none' }}
+        className="sticky top-0 z-40 flex gap-1 overflow-x-auto bg-zinc-950 border-b border-zinc-800 px-3 scrollbar-hide"
+        style={{ scrollbarWidth: "none" }}
       >
-        {categories.map(cat => {
-          const isActive = selectedCategory === cat.id;
-          const count = mergedProducts.filter(p => p.category === cat.id).length;
-          return (
-            <button
-              key={cat.id}
-              data-active={isActive}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${
-                isActive ? 'border-red-500 text-red-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              <span>{CATEGORY_ICONS[cat.id]}</span>
-              {cat.label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                isActive ? 'bg-red-900/60 text-red-300' : 'bg-zinc-800 text-zinc-500'
-              }`}>{count}</span>
-            </button>
-          );
-        })}
+        <div className="max-w-7xl mx-auto flex gap-1 w-full">
+          {categories.map((cat) => {
+            const isActive = selectedCategory === cat.id
+            const count = mergedProducts.filter((p) => p.category === cat.id).length
+            return (
+              <button
+                key={cat.id}
+                data-active={isActive}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${
+                  isActive
+                    ? "border-red-500 text-red-400"
+                    : "border-transparent text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <span>{CATEGORY_ICONS[cat.id]}</span>
+                {cat.label}
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    isActive
+                      ? "bg-red-900/60 text-red-300"
+                      : "bg-zinc-800 text-zinc-500"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* LISTA DE PRODUTOS */}
-      <main className="pb-28 px-3 pt-4">
+      <main className="max-w-7xl mx-auto pb-28 px-3 pt-4">
         <div className="flex items-center gap-2 mb-4 px-1">
           <div className="w-1 h-5 bg-red-600 rounded-full" />
           <h2 className="text-base font-bold text-zinc-200">
             {CATEGORY_ICONS[selectedCategory]} {selectedCategory}
           </h2>
-          <span className="text-xs text-zinc-600 ml-1">{filteredProducts.length} itens</span>
+          <span className="text-xs text-zinc-600 ml-1">
+            {filteredProducts.length} itens
+          </span>
         </div>
 
         <div className="flex flex-col gap-2">
-          {filteredProducts.map(product => {
-            const imgSrc    = productImages[product.id] || product.image;
-            const cartItem  = items.find(i => i.id === product.id);
-            const isDestaque = DESTAQUES.includes(product.id);
-            const isKids     = KIDS_BADGE.includes(product.id);
-            const catBadge   = CATEGORY_BADGE[product.category];
+          {filteredProducts.map((product) => {
+            const imgSrc = productImages[product.id] || product.image
+            const cartItem = items.find((i) => i.id === product.id)
+            const isDestaque = DESTAQUES.includes(product.id)
+            const isKids = KIDS_BADGE.includes(product.id)
+            const catBadge = CATEGORY_BADGE[product.category]
 
             return (
               <div
                 key={product.id}
                 className="relative bg-zinc-900 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all overflow-hidden"
-                style={isDestaque ? { borderColor: 'rgba(220,38,38,0.4)' } : {}}
+                style={
+                  isDestaque ? { borderColor: "rgba(220,38,38,0.4)" } : {}
+                }
               >
-                {isDestaque && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600 rounded-l-2xl" />}
+                {isDestaque && (
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600 rounded-l-2xl" />
+                )}
 
                 <div className="flex items-start gap-3 p-4">
                   <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -169,27 +315,41 @@ export default function Home() {
                           <Star className="w-2.5 h-2.5" /> DESTAQUE
                         </span>
                       )}
+
                       {isKids && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-900/70 border border-blue-500/50 text-blue-300">
                           🧒 KIDS
                         </span>
                       )}
+
                       {catBadge && (
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${catBadge.color}`}>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${catBadge.color}`}
+                        >
                           {catBadge.label}
                         </span>
                       )}
                     </div>
 
-                    <h3 className="font-bold text-[15px] leading-snug text-white">{product.name}</h3>
-                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">{product.description}</p>
+                    <h3 className="font-bold text-[15px] leading-snug text-white">
+                      {product.name}
+                    </h3>
+                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">
+                      {product.description}
+                    </p>
+
                     <p className="text-red-400 font-black text-lg mt-1">
-                      R$ {product.price.toFixed(2).replace('.', ',')}
+                      R$ {product.price.toFixed(2).replace(".", ",")}
                     </p>
 
                     <button
                       onClick={() => pedirDiretoWhatsApp(product.name, product.price)}
-                      className="self-start mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-green-400 hover:text-green-300 transition-colors"
+                      disabled={!WHATSAPP_NUMBER}
+                      className={`self-start mt-1 flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${
+                        WHATSAPP_NUMBER
+                          ? "text-green-400 hover:text-green-300"
+                          : "text-zinc-500 cursor-not-allowed"
+                      }`}
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                       Pedir direto pelo WhatsApp
@@ -198,21 +358,33 @@ export default function Home() {
 
                   <div className="relative flex-shrink-0">
                     <div className="w-24 h-24 rounded-xl overflow-hidden bg-zinc-800 flex items-center justify-center">
-                      {imgSrc
-                        ? <img src={imgSrc} alt={product.name} className="w-full h-full object-cover" />
-                        : <span className="text-4xl opacity-40">{CATEGORY_ICONS[product.category]}</span>}
+                      {imgSrc ? (
+                        <img
+                          src={imgSrc}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-4xl opacity-40">
+                          {CATEGORY_ICONS[product.category]}
+                        </span>
+                      )}
                     </div>
 
                     {cartItem ? (
                       <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-zinc-950 border border-red-600 rounded-full px-2 py-1 shadow-lg">
                         <button
-                          onClick={() => updateQuantity(product.id, cartItem.quantity - 1)}
+                          onClick={() =>
+                            updateQuantity(product.id, cartItem.quantity - 1)
+                          }
                           className="w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-300"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
 
-                        <span className="text-xs font-black text-white w-4 text-center">{cartItem.quantity}</span>
+                        <span className="text-xs font-black text-white w-4 text-center">
+                          {cartItem.quantity}
+                        </span>
 
                         <button
                           onClick={() => addItem(product)}
@@ -232,29 +404,40 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            );
+            )
           })}
         </div>
       </main>
 
       {/* SIDEBAR CARRINHO */}
       {showCart && (
-        <div className="fixed inset-0 bg-black/70 z-40 backdrop-blur-sm" onClick={() => setShowCart(false)} />
+        <div
+          className="fixed inset-0 bg-black/70 z-40 backdrop-blur-sm"
+          onClick={() => setShowCart(false)}
+        />
       )}
 
-      <div className={`fixed top-0 right-0 h-full w-full sm:w-96 bg-zinc-900 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${
-        showCart ? 'translate-x-0' : 'translate-x-full'
-      }`}>
+      <div
+        className={`fixed top-0 right-0 h-full w-full sm:w-96 bg-zinc-900 shadow-2xl transform transition-transform duration-300 z-50 flex flex-col ${
+          showCart ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
         <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900 sticky top-0">
           <h3 className="text-lg font-bold flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-red-500" />
             Carrinho
             {cartItemCount > 0 && (
-              <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">{cartItemCount}</span>
+              <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {cartItemCount}
+              </span>
             )}
           </h3>
-
-          <Button variant="ghost" size="icon" onClick={() => setShowCart(false)} className="hover:bg-zinc-800">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowCart(false)}
+            className="hover:bg-zinc-800"
+          >
             <X className="w-5 h-5" />
           </Button>
         </div>
@@ -268,15 +451,24 @@ export default function Home() {
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map(item => (
-                <div key={item.id} className="bg-zinc-800 rounded-xl p-3 border border-zinc-700">
+              {items.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-zinc-800 rounded-xl p-3 border border-zinc-700"
+                >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex-1 pr-2">
-                      <h4 className="font-semibold text-sm leading-snug">{item.name}</h4>
-                      <p className="text-xs text-zinc-400 mt-0.5">R$ {item.price.toFixed(2).replace('.', ',')} / un.</p>
+                      <h4 className="font-semibold text-sm leading-snug">
+                        {item.name}
+                      </h4>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        R$ {item.price.toFixed(2).replace(".", ",")} / un.
+                      </p>
                     </div>
-
-                    <button onClick={() => removeItem(item.id)} className="text-zinc-500 hover:text-red-400 transition-colors p-1">
+                    <button
+                      onClick={() => removeItem(item.id)}
+                      className="text-zinc-500 hover:text-red-400 transition-colors p-1"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -289,7 +481,9 @@ export default function Home() {
                       <Minus className="w-3 h-3" />
                     </button>
 
-                    <span className="w-10 text-center font-bold text-sm">{item.quantity}</span>
+                    <span className="w-10 text-center font-bold text-sm">
+                      {item.quantity}
+                    </span>
 
                     <button
                       onClick={() => updateQuantity(item.id, item.quantity + 1)}
@@ -299,7 +493,7 @@ export default function Home() {
                     </button>
 
                     <span className="ml-auto font-bold text-red-400 text-sm">
-                      R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}
+                      R$ {(item.price * item.quantity).toFixed(2).replace(".", ",")}
                     </span>
                   </div>
                 </div>
@@ -312,11 +506,15 @@ export default function Home() {
           <div className="border-t border-zinc-800 p-4 space-y-3 bg-zinc-900">
             <div className="flex justify-between items-center">
               <span className="text-zinc-400 text-sm">Total do pedido</span>
-              <span className="text-xl font-black text-red-400">R$ {total.toFixed(2).replace('.', ',')}</span>
+              <span className="text-xl font-black text-red-400">
+                R$ {total.toFixed(2).replace(".", ",")}
+              </span>
             </div>
-
             <button
-              onClick={() => { setShowCart(false); setShowCheckout(true); }}
+              onClick={() => {
+                setShowCart(false)
+                setShowCheckout(true)
+              }}
               className="w-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold py-4 rounded-xl text-base transition-colors shadow-lg shadow-red-900/30"
             >
               🛒 Finalizar Pedido
@@ -330,15 +528,21 @@ export default function Home() {
         <button
           onClick={() => setShowCart(true)}
           className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between px-5 py-4 text-white font-bold transition-all"
-          style={{ background: '#dc2626', boxShadow: '0 -4px 20px rgba(220,38,38,0.35)' }}
+          style={{
+            background: "#dc2626",
+            boxShadow: "0 -4px 20px rgba(220,38,38,0.35)",
+          }}
         >
           <div className="flex items-center gap-3">
-            <span className="bg-black/25 text-white text-sm font-black px-2.5 py-0.5 rounded-lg">{cartItemCount}</span>
+            <span className="bg-black/25 text-white text-sm font-black px-2.5 py-0.5 rounded-lg">
+              {cartItemCount}
+            </span>
             <span className="text-base">Ver carrinho</span>
           </div>
-
           <div className="flex items-center gap-2">
-            <span className="text-base font-black">R$ {total.toFixed(2).replace('.', ',')}</span>
+            <span className="text-base font-black">
+              R$ {total.toFixed(2).replace(".", ",")}
+            </span>
             <ChevronRight className="w-5 h-5 opacity-80" />
           </div>
         </button>
@@ -348,8 +552,13 @@ export default function Home() {
       {cartItemCount === 0 && (
         <button
           onClick={handleWhatsApp}
-          className="fixed bottom-6 right-5 z-40 w-14 h-14 rounded-full bg-green-500 hover:bg-green-400 text-white flex items-center justify-center shadow-xl shadow-green-900/50 transition-all hover:scale-105"
-          style={{ animation: 'pulse-green 2s infinite' }}
+          disabled={!WHATSAPP_NUMBER}
+          className={`fixed bottom-6 right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-xl transition-all ${
+            WHATSAPP_NUMBER
+              ? "bg-green-500 hover:bg-green-400 hover:scale-105 shadow-green-900/50"
+              : "bg-zinc-700 opacity-50 cursor-not-allowed"
+          }`}
+          style={WHATSAPP_NUMBER ? { animation: "pulse-green 2s infinite" } : undefined}
           title="WhatsApp"
         >
           <MessageCircle className="w-7 h-7" />
@@ -358,7 +567,7 @@ export default function Home() {
 
       {/* MODAIS */}
       {showCheckout && <CheckoutModal onClose={() => setShowCheckout(false)} />}
-      {showAdmin    && <AdminPanel    onClose={() => setShowAdmin(false)}    />}
+      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
 
       <style>{`
         @keyframes pulse-green {
@@ -375,5 +584,5 @@ export default function Home() {
         }
       `}</style>
     </div>
-  );
+  )
 }
