@@ -157,7 +157,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   }
 }
 
-export function AdminPanel({ isOpen, onClose, products }: AdminPanelProps) {
+export default function AdminPanel({ isOpen, onClose, products }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword]               = useState('');
   const [passwordError, setPasswordError]     = useState('');
