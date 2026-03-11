@@ -8,9 +8,9 @@ import { getStoreConfig, saveStoreConfig, DEFAULT_CONFIG, StoreConfig } from '@/
 const ADMIN_PASSWORD = '@grill2025';
 
 interface AdminPanelProps {
-  isOpen: boolean;
   onClose: () => void;
-  products: any[];
+  isOpen?: boolean;
+  products?: any[];
 }
 
 interface Order {
@@ -157,7 +157,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   }
 }
 
-export default function AdminPanel({ isOpen, onClose, products }: AdminPanelProps) {
+export default function AdminPanel({ onClose, products }: AdminPanelProps) {
+  const safeProducts = products ?? [];
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword]               = useState('');
   const [passwordError, setPasswordError]     = useState('');
@@ -334,8 +335,6 @@ export default function AdminPanel({ isOpen, onClose, products }: AdminPanelProp
     window.dispatchEvent(new Event('productOverridesUpdated'));
     showToast('✅ Produto atualizado!');
   };
-
-  if (!isOpen) return null;
 
   const tabs = [
     { key: 'pedidos',   label: '🧾 Pedidos' },
@@ -515,7 +514,7 @@ export default function AdminPanel({ isOpen, onClose, products }: AdminPanelProp
                 <>
                   <p className="text-gray-400 text-xs text-center mb-2">Clique em "Adicionar Foto" para cada produto</p>
                   <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                  {products.map(product => (
+                  {safeProducts.map(product => (
                     <div key={product.id} className="flex items-center gap-3 bg-gray-800 rounded-xl p-3">
                       <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
                         {productImages[product.id]
@@ -541,7 +540,7 @@ export default function AdminPanel({ isOpen, onClose, products }: AdminPanelProp
               {activeTab === 'produtos' && (
                 <>
                   <p className="text-gray-400 text-xs text-center mb-2">Edite preço, descrição ou oculte produtos</p>
-                  {products.map(product => {
+                  {safeProducts.map(product => {
                     const ov = overrides[product.id] || {};
                     return (
                       <div key={product.id} className="bg-gray-800 rounded-xl p-3 space-y-2">
