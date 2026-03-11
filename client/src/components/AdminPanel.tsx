@@ -1,860 +1,619 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  X, Upload, Loader2, Trash2, CheckCircle, Cloud,
-  Camera, Store, UtensilsCrossed, Save, RotateCcw, Eye, EyeOff, LogOut, Mail, KeyRound
-} from 'lucide-react';
-import { products } from '@/data/products';
-import { toast } from 'sonner';
+import { X, Camera, Eye, EyeOff, Upload, Cloud, Printer, RefreshCw, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { getStoreConfig, saveStoreConfig, StoreConfig } from '@/lib/storeConfig';
-import { getProductOverrides, saveProductOverride, resetProductOverride } from '@/lib/productOverrides';
+import { getProductOverrides, saveProductOverrides, ProductOverride } from '@/lib/productOverrides';
+import { getStoreConfig, saveStoreConfig, DEFAULT_CONFIG, StoreConfig } from '@/lib/storeConfig';
+
+const ADMIN_PASSWORD = '@grill2025';
 
 interface AdminPanelProps {
+  isOpen: boolean;
   onClose: () => void;
+  products: any[];
 }
 
-const ADMIN_UID = '51d8cee2-bfcd-4820-8dc4-7e94b9c45b53';
-
-const IMGBB_API_KEY = '168636329f99c2f019368c3c7d628d83';
-const IMGBB_UPLOAD_URL = 'https://api.imgbb.com/1/upload';
-
-type Tab = 'fotos' | 'produtos' | 'loja';
-type ImageMap = Record<string, string>;
-
-async function loadImages(): Promise<ImageMap> {
-  const { data, error } = await supabase
-    .from('product_images')
-    .select('id, image_url');
-
-  if (error) {
-    console.error('Supabase load error:', error);
-    return {};
-  }
-
-  const map: ImageMap = {};
-  (data ?? []).forEach((r: any) => {
-    map[r.id] = r.image_url;
-  });
-  return map;
+interface Order {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  delivery_type: string;
+  address: string;
+  number: string;
+  reference: string;
+  observations: string;
+  payment_method: string;
+  troco: number | null;
+  items: any[];
+  subtotal: number;
+  freight: number;
+  total: number;
+  gps_lat: number | null;
+  gps_lng: number | null;
+  status: string;
+  created_at: string;
 }
 
-async function saveImageUrl(productId: string, url: string): Promise<void> {
-  const { error } = await supabase.from('product_images').upsert({
-    id: productId,
-    image_url: url,
-    updated_at: new Date().toISOString(),
-  });
+// ── Cupom térmico 80mm ───────────────────────────────────────────────
+function gerarCupom(order: Order): string {
+  const L = 42;
+  const linha = '─'.repeat(L);
+  const centro = (t: string) => {
+    const pad = Math.max(0, Math.floor((L - t.length) / 2));
+    return ' '.repeat(pad) + t;
+  };
+  const row = (esq: string, dir: string) => {
+    const maxEsq = L - dir.length - 1;
+    return esq.substring(0, maxEsq).padEnd(maxEsq) + ' ' + dir;
+  };
 
-  if (error) throw error;
+  const pagLabel =
+    order.payment_method === 'pix'     ? 'PIX' :
+    order.payment_method === 'cartao'  ? 'Cartão' : 'Dinheiro';
+
+  const itensLinhas = order.items
+    .map((i: any) => row(`${i.quantity}x ${i.name}`, `R$${(i.price * i.quantity).toFixed(2)}`))
+    .join('\n');
+
+  const entregaLinha =
+    order.delivery_type === 'delivery'
+      ? `Entrega: ${order.address}, ${order.number}${order.reference ? '\nRef: ' + order.reference : ''}`
+      : 'Retirada no local';
+
+  const trocoLinha = order.payment_method === 'dinheiro' && order.troco
+    ? `Troco p/: R$ ${order.troco.toFixed(2)}\n`
+    : '';
+
+  const freteLinha = order.freight > 0
+    ? row('Frete', `R$${order.freight.toFixed(2)}`) + '\n'
+    : '';
+
+  const dataHora = new Date(order.created_at).toLocaleString('pt-BR');
+
+  return [
+    '',
+    centro('*** GRILL CENTRAL ***'),
+    centro('Forquilhinha - SC'),
+    centro('(48) 98836-2576'),
+    linha,
+    `Pedido: ${order.id.substring(0, 8).toUpperCase()}`,
+    `Data: ${dataHora}`,
+    linha,
+    `Cliente: ${order.customer_name}`,
+    `Tel: ${order.customer_phone}`,
+    linha,
+    entregaLinha,
+    linha,
+    row('ITEM', 'VALOR'),
+    linha,
+    itensLinhas,
+    linha,
+    freteLinha + row('SUBTOTAL', `R$${order.subtotal.toFixed(2)}`),
+    row('** TOTAL **', `R$${order.total.toFixed(2)}`),
+    linha,
+    `Pagamento: ${pagLabel}`,
+    trocoLinha + linha,
+    centro('Obrigado pela preferencia!'),
+    centro('Bom apetite! :)'),
+    '',
+  ].join('\n');
 }
 
-async function removeImageUrl(productId: string): Promise<void> {
-  const { error } = await supabase
-    .from('product_images')
-    .delete()
-    .eq('id', productId);
-
-  if (error) throw error;
+function imprimirCupom(order: Order) {
+  const cupom = gerarCupom(order);
+  const win = window.open('', '_blank', 'width=400,height=600');
+  if (!win) return;
+  win.document.write(`
+    <html><head><title>Cupom #${order.id.substring(0,8).toUpperCase()}</title>
+    <style>
+      @page { margin: 0; size: 80mm auto; }
+      body { font-family: 'Courier New', monospace; font-size: 12px;
+             white-space: pre; margin: 4mm; line-height: 1.4; }
+    </style></head>
+    <body>${cupom.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</body></html>
+  `);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 300);
 }
 
-function resizeImage(file: File, maxW = 1200, maxH = 900): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
+  novo:       { label: 'Novo',       color: 'bg-blue-700 text-blue-100',   icon: Clock },
+  preparando: { label: 'Preparando', color: 'bg-yellow-700 text-yellow-100', icon: Clock },
+  entregue:   { label: 'Entregue',   color: 'bg-green-700 text-green-100',  icon: CheckCircle },
+  cancelado:  { label: 'Cancelado',  color: 'bg-red-800 text-red-100',     icon: XCircle },
+};
 
-    reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+// ── Som de notificação (Web Audio API — sem arquivo externo) ─────────────────
+ function tocarNovoPedido() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ac = new AudioCtx();
 
-    reader.onload = (e) => {
-      const img = new Image();
-
-      img.onerror = () => reject(new Error('Erro ao carregar imagem'));
-
-      img.onload = () => {
-        let { width, height } = img;
-
-        if (width > maxW || height > maxH) {
-          const ratio = Math.min(maxW / width, maxH / height);
-          width = Math.floor(width * ratio);
-          height = Math.floor(height * ratio);
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas indisponível'));
-
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
-      };
-
-      img.src = e.target?.result as string;
+    const beep = (freq: number, start: number, dur: number, vol = 0.3) => {
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, ac.currentTime + start);
+      gain.gain.setValueAtTime(0, ac.currentTime + start);
+      gain.gain.linearRampToValueAtTime(vol, ac.currentTime + start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + start + dur);
+      osc.start(ac.currentTime + start);
+      osc.stop(ac.currentTime + start + dur + 0.05);
     };
 
-    reader.readAsDataURL(file);
-  });
+    // Sequência Ding-Dong — 2 repetições
+    beep(880,  0.0,  0.15);
+    beep(1100, 0.2,  0.15);
+    beep(1320, 0.4,  0.25, 0.35);
+    beep(880,  0.8,  0.15);
+    beep(1100, 1.0,  0.15);
+    beep(1320, 1.2,  0.25, 0.35);
+  } catch (e) {
+    console.warn('Audio error:', e);
+  }
 }
 
-async function uploadToImgBB(base64: string, name: string): Promise<string> {
-  const formData = new FormData();
-  formData.append('key', IMGBB_API_KEY);
-  formData.append('image', base64);
-  formData.append('name', name);
-
-  const response = await fetch(IMGBB_UPLOAD_URL, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error(`Erro HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error(data.error?.message || 'Erro no ImgBB');
-  }
-
-  return data.data.display_url as string;
-}
-
-export default function AdminPanel({ onClose }: AdminPanelProps) {
+export function AdminPanel({ isOpen, onClose, products }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('fotos');
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loggingIn, setLoggingIn] = useState(false);
-
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [images, setImages] = useState<ImageMap>({});
-
-  const [overrides, setOverrides] = useState(getProductOverrides);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', price: '', description: '' });
-
-  const [storeForm, setStoreForm] = useState<StoreConfig | null>(null);
-  const [savingStore, setSavingStore] = useState(false);
-
-  const refreshOverrides = () => setOverrides(getProductOverrides());
+  const [password, setPassword]               = useState('');
+  const [passwordError, setPasswordError]     = useState('');
+  const [activeTab, setActiveTab]             = useState<'pedidos' | 'fotos' | 'produtos' | 'loja'>('pedidos');
+  const [overrides, setOverrides]             = useState<Record<string, ProductOverride>>({});
+  const [storeForm, setStoreForm]             = useState<StoreConfig>({ ...DEFAULT_CONFIG });
+  const [productImages, setProductImages]     = useState<Record<string, string>>({});
+  const [uploadingId, setUploadingId]         = useState<string | null>(null);
+  const [toast, setToast]                     = useState<string | null>(null);
+  const [orders, setOrders]                   = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders]     = useState(false);
+  const [expandedOrder, setExpandedOrder]     = useState<string | null>(null);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
+  const [uploadTargetId, setUploadTargetId]   = useState<string | null>(null);
+  const lastOrderCount = useRef<number>(-1);
 
   useEffect(() => {
-    let alive = true;
-
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      const uid = data.session?.user?.id;
-
-      if (!alive) return;
-
-      setIsAuthenticated(uid === ADMIN_UID);
-    };
-
-    checkSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const uid = session?.user?.id;
-      setIsAuthenticated(uid === ADMIN_UID);
-    });
-
-    return () => {
-      alive = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    loadImages().then(setImages);
-    getStoreConfig().then(setStoreForm);
+    if (isAuthenticated) {
+      setOverrides(getProductOverrides());
+      loadImages();
+      loadOrders();
+      getStoreConfig().then(setStoreForm).catch(() => setStoreForm({ ...DEFAULT_CONFIG }));
+    }
   }, [isAuthenticated]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoggingIn(true);
-
-    try {
-      const cleanEmail = email.trim().toLowerCase();
-
-      console.log('Tentando login com:', cleanEmail);
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
-
-      if (error) {
-        console.error('Erro Supabase signInWithPassword:', error);
-        throw error;
+  // Escuta novos pedidos do CheckoutModal
+  useEffect(() => {
+    const handler = (e: any) => {
+      if (e.detail) {
+        setOrders(prev => [e.detail, ...prev]);
+        tocarNovoPedido();
+        showToast('🛒 Novo pedido chegou!');
       }
+    };
+    window.addEventListener('novoPedido', handler);
+    return () => window.removeEventListener('novoPedido', handler);
+  }, []);
 
-      const uid = data.user?.id;
-      console.log('UID logado:', uid);
-
-      if (uid !== ADMIN_UID) {
-        console.warn('Usuário autenticado, mas sem permissão de admin:', uid);
-
-        await supabase.auth.signOut();
-        setIsAuthenticated(false);
-        toast.error('❌ Este usuário não tem permissão de administrador.');
+  // Polling Supabase a cada 30s — detecta pedidos de outros dispositivos
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (!data) return;
+      const count = data.length;
+      if (lastOrderCount.current === -1) {
+        lastOrderCount.current = count;
         return;
       }
-
-      setIsAuthenticated(true);
-      toast.success('✅ Login admin realizado!');
-    } catch (err: any) {
-      console.error('LOGIN ERROR:', err);
-
-      let message = err?.message || 'Erro desconhecido';
-
-      if (message.includes('Invalid login credentials')) {
-        message = 'Email ou senha incorretos.';
-      } else if (message.includes('Email not confirmed')) {
-        message = 'Email ainda não confirmado.';
-      } else if (message.includes('Too many requests')) {
-        message = 'Muitas tentativas. Aguarde e tente novamente.';
+      if (count > lastOrderCount.current) {
+        const novos = count - lastOrderCount.current;
+        lastOrderCount.current = count;
+        // Recarrega a lista completa
+        const { data: full } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (full) setOrders(full);
+        // Toca o som e mostra toast
+        for (let i = 0; i < Math.min(novos, 3); i++) {
+          setTimeout(() => tocarNovoPedido(), i * 2000);
+        }
+        showToast(`🛒 ${novos} novo${novos > 1 ? 's pedidos' : ' pedido'} chegou!`);
       }
+    }, 30000); // a cada 30 segundos
+    return () => clearInterval(poll);
+  }, [isAuthenticated]);
 
-      toast.error(`❌ ${message}`);
-      setIsAuthenticated(false);
-    } finally {
-      setLoggingIn(false);
+  const loadOrders = async () => {
+    setLoadingOrders(true);
+    const { data } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) setOrders(data);
+    setLoadingOrders(false);
+  };
+
+  const updateStatus = async (orderId: string, status: string) => {
+    await supabase.from('orders').update({ status }).eq('id', orderId);
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+    showToast(`✅ Status atualizado: ${STATUS_CONFIG[status]?.label}`);
+  };
+
+  const loadImages = async () => {
+    const { data } = await supabase.from('product_images').select('id, image_url');
+    if (data) {
+      const map: Record<string, string> = {};
+      data.forEach(row => { map[row.id] = row.image_url; });
+      setProductImages(map);
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setIsAuthenticated(false);
-      setPassword('');
-      setShowPassword(false);
-      toast.success('✅ Saiu do admin.');
-    } catch (err: any) {
-      toast.error(`❌ Erro ao sair: ${err.message}`);
-    }
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <Card className="bg-zinc-900 border-zinc-800 w-full max-w-md p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">🔐 Painel Admin</h2>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
+  const handleLogin = () => {
+    if (password === ADMIN_PASSWORD) { setIsAuthenticated(true); setPasswordError(''); }
+    else setPasswordError('Senha incorreta');
+  };
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <Label htmlFor="email">E-mail</Label>
-              <div className="relative mt-1">
-                <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="marcelo.pessoal79@gmail.com"
-                  className="pl-9"
-                  autoFocus
-                  required
-                />
-              </div>
-            </div>
+  const handleLogout = () => { setIsAuthenticated(false); setPassword(''); onClose(); };
 
-            <div>
-              <Label htmlFor="password">Senha</Label>
-              <div className="relative mt-1">
-                <KeyRound className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Digite a senha"
-                  className="pl-9 pr-10"
-                  required
-                />
+  const resizeImage = (file: File, maxW = 1200, maxH = 900): Promise<Blob> =>
+    new Promise(resolve => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxW || height > maxH) {
+          const ratio = Math.min(maxW / width, maxH / height);
+          width = Math.round(width * ratio); height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(b => resolve(b!), 'image/jpeg', 0.85);
+      };
+      img.src = url;
+    });
 
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+  const uploadToImgBB = async (blob: Blob): Promise<string> => {
+    const fd = new FormData(); fd.append('image', blob);
+    const res = await fetch('https://api.imgbb.com/1/upload?key=168636329f99c2f019368c3c7d628d83', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (!json.success) throw new Error('ImgBB upload falhou');
+    return json.data.url;
+  };
 
-            <Button
-              type="submit"
-              className="w-full bg-red-600 hover:bg-red-700 gap-2"
-              disabled={loggingIn}
-            >
-              {loggingIn ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Entrando...
-                </>
-              ) : (
-                'Entrar'
-              )}
-            </Button>
-
-            <div className="text-xs text-zinc-500 space-y-1">
-              <p>Use o login real do Supabase Auth.</p>
-              <p>Email esperado: <span className="text-zinc-300">marcelo.pessoal79@gmail.com</span></p>
-            </div>
-          </form>
-        </Card>
-      </div>
-    );
-  }
-
-  const handleFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    productId: string,
-    productName: string
-  ) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 32 * 1024 * 1024) {
-      toast.error('Imagem muito grande! Máximo 32MB.');
-      return;
-    }
-
-    setUploadingId(productId);
-
+    if (!file || !uploadTargetId) return;
+    setUploadingId(uploadTargetId);
     try {
-      toast.info('📤 Enviando para a nuvem...');
-
-      const base64 = await resizeImage(file);
-      const url = await uploadToImgBB(base64, productName);
-
-      await saveImageUrl(productId, url);
-
-      setImages((prev) => ({ ...prev, [productId]: url }));
+      const blob = await resizeImage(file);
+      const url  = await uploadToImgBB(blob);
+      const { error } = await supabase.from('product_images').upsert({ id: uploadTargetId, image_url: url, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      setProductImages(prev => ({ ...prev, [uploadTargetId]: url }));
       window.dispatchEvent(new Event('productImagesUpdated'));
-      toast.success('✅ Foto salva! Visível em todos os dispositivos.');
-    } catch (err: any) {
-      console.error(err);
-      toast.error(`❌ Erro: ${err.message}`);
-    } finally {
-      setUploadingId(null);
-      e.target.value = '';
+      showToast('✅ Foto salva! Visível em todos os dispositivos.');
+    } catch { showToast('❌ Erro ao salvar foto.'); }
+    finally {
+      setUploadingId(null); setUploadTargetId(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleRemoveImage = async (productId: string) => {
-    try {
-      await removeImageUrl(productId);
-      setImages((prev) => {
-        const next = { ...prev };
-        delete next[productId];
-        return next;
-      });
-      window.dispatchEvent(new Event('productImagesUpdated'));
-      toast.success('🗑️ Foto removida!');
-    } catch (err: any) {
-      toast.error(`❌ Erro ao remover: ${err.message}`);
-    }
-  };
-
-  const startEdit = (id: string) => {
-    const ov = overrides[id] || {};
-    const base = products.find((p) => p.id === id)!;
-
-    setEditForm({
-      name: ov.name ?? base.name,
-      price: String(ov.price ?? base.price),
-      description: ov.description ?? base.description,
-    });
-
-    setEditingId(id);
-  };
-
-  const saveEdit = (id: string) => {
-    const price = parseFloat(editForm.price.replace(',', '.'));
-
-    if (isNaN(price) || price <= 0) {
-      toast.error('Preço inválido!');
-      return;
-    }
-
-    saveProductOverride(id, {
-      name: editForm.name.trim(),
-      price,
-      description: editForm.description.trim(),
-    });
-
-    refreshOverrides();
-    setEditingId(null);
-    window.dispatchEvent(new Event('productOverridesUpdated'));
-    toast.success('✅ Produto atualizado!');
-  };
-
-  const resetProduct = (id: string) => {
-    resetProductOverride(id);
-    refreshOverrides();
-
-    if (editingId === id) {
-      setEditingId(null);
-    }
-
-    window.dispatchEvent(new Event('productOverridesUpdated'));
-    toast.info('↩️ Produto restaurado ao padrão.');
-  };
-
-  const toggleActive = (id: string) => {
-    const current = overrides[id]?.active ?? true;
-
-    saveProductOverride(id, { active: !current });
-    refreshOverrides();
-
-    window.dispatchEvent(new Event('productOverridesUpdated'));
-    toast.success(current ? '🙈 Produto ocultado.' : '👁️ Produto visível.');
-  };
+  const triggerUpload = (id: string) => { setUploadTargetId(id); setTimeout(() => fileInputRef.current?.click(), 50); };
 
   const handleSaveStore = async () => {
-    if (!storeForm) return;
-
-    setSavingStore(true);
-
-    try {
-      await saveStoreConfig(storeForm);
-      window.dispatchEvent(new Event('storeConfigUpdated'));
-      toast.success('✅ Dados da loja salvos em todos os dispositivos!');
-    } catch (err: any) {
-      toast.error(`❌ Erro ao salvar: ${err.message}`);
-    } finally {
-      setSavingStore(false);
-    }
+    try { await saveStoreConfig(storeForm); showToast('✅ Dados da loja salvos!'); }
+    catch { showToast('❌ Erro ao salvar.'); }
   };
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'fotos', label: 'Fotos', icon: <Camera className="w-4 h-4" /> },
-    { id: 'produtos', label: 'Produtos', icon: <UtensilsCrossed className="w-4 h-4" /> },
-    { id: 'loja', label: 'Loja', icon: <Store className="w-4 h-4" /> },
-  ];
+  const handleToggleProduct = (id: string, hidden: boolean) => {
+    const updated = { ...overrides, [id]: { ...overrides[id], hidden } };
+    setOverrides(updated); saveProductOverrides(updated);
+    window.dispatchEvent(new Event('productOverridesUpdated'));
+  };
+
+  const handleSaveProduct = (id: string, field: 'price' | 'description', value: string) => {
+    const updated = { ...overrides, [id]: { ...overrides[id], [field]: field === 'price' ? parseFloat(value) : value } };
+    setOverrides(updated); saveProductOverrides(updated);
+    window.dispatchEvent(new Event('productOverridesUpdated'));
+    showToast('✅ Produto atualizado!');
+  };
+
+  if (!isOpen) return null;
+
+  const tabs = [
+    { key: 'pedidos',   label: '🧾 Pedidos' },
+    { key: 'fotos',     label: '📷 Fotos' },
+    { key: 'produtos',  label: '🍔 Produtos' },
+    { key: 'loja',      label: '🏪 Loja' },
+  ] as const;
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <Card className="bg-zinc-900 border-zinc-800 w-full max-w-4xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold">⚙️ Painel Admin</h2>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 border border-green-700/40 text-green-300">
-              Supabase Auth
-            </span>
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-900 text-white w-full max-w-2xl max-h-[90vh] rounded-2xl overflow-hidden flex flex-col shadow-2xl">
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="border-zinc-700 hover:bg-zinc-800 gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              Sair
-            </Button>
-
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+          <h2 className="text-lg font-bold">🔒 Painel Admin</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20} /></button>
         </div>
 
-        <div className="flex border-b border-zinc-800 px-4 pt-2 gap-1">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-all border-b-2 ${
-                activeTab === t.id
-                  ? 'border-red-500 text-red-400 bg-zinc-800'
-                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === 'fotos' && (
+        {!isAuthenticated ? (
+          <div className="flex flex-col items-center justify-center flex-1 p-8 gap-4">
+            <div className="text-4xl">🔑</div>
+            <p className="text-gray-300 text-sm">Digite a senha para acessar o painel</p>
+            <input type="password"
+              className="w-full max-w-xs bg-gray-800 rounded-lg px-4 py-3 text-white border border-gray-600 focus:outline-none focus:border-red-500"
+              placeholder="Senha" value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+            {passwordError && <p className="text-red-400 text-sm">{passwordError}</p>}
+            <Button onClick={handleLogin} className="bg-red-600 hover:bg-red-700 w-full max-w-xs">Entrar</Button>
+          </div>
+        ) : (
           <>
-            <div className="mx-6 mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-              <p className="text-sm text-blue-300">
-                💡 <strong>Como usar:</strong> Clique em <strong>"Adicionar Foto"</strong>, escolha a foto.
-                Ela vai para a nuvem e aparece em <strong>todos os dispositivos</strong> automaticamente.
-              </p>
+            {/* Tabs */}
+            <div className="flex border-b border-gray-700 overflow-x-auto">
+              {tabs.map(tab => (
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                  className={`flex-1 min-w-max py-3 px-2 text-xs font-medium transition-colors whitespace-nowrap ${activeTab === tab.key ? 'border-b-2 border-red-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {products.map((product) => {
-                const currentImage = images[product.id];
-                const isUploading = uploadingId === product.id;
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
-                return (
-                  <Card key={product.id} className="bg-zinc-800 border-zinc-700 p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="font-bold text-sm">
-                          {overrides[product.id]?.name ?? product.name}
-                        </h3>
-                        <p className="text-yellow-500 text-sm font-semibold">
-                          R$ {(overrides[product.id]?.price ?? product.price).toFixed(2)}
-                        </p>
-                      </div>
-
-                      {currentImage && (
-                        <span className="flex items-center gap-1 text-green-400 text-xs">
-                          <CheckCircle className="w-3 h-3" />
-                          <Cloud className="w-3 h-3" />
-                          Nuvem
-                        </span>
-                      )}
+              {/* ── PEDIDOS ── */}
+              {activeTab === 'pedidos' && (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-xs">Últimos 50 pedidos · atualiza a cada 30s</p>
+                    <div className="flex items-center gap-2">
+                      <button onClick={tocarNovoPedido} title="Testar som"
+                        className="text-gray-400 hover:text-yellow-400 text-xs px-2 py-1 rounded-lg bg-gray-800 hover:bg-gray-700">
+                        🔔
+                      </button>
+                      <button onClick={loadOrders} className="text-gray-400 hover:text-white">
+                        <RefreshCw size={14} className={loadingOrders ? 'animate-spin' : ''} />
+                      </button>
                     </div>
+                  </div>
 
-                    {currentImage && (
-                      <div className="mb-3 rounded overflow-hidden border border-zinc-600">
-                        <img
-                          src={currentImage}
-                          alt={product.name}
-                          className="w-full h-36 object-cover"
-                        />
-                      </div>
-                    )}
+                  {loadingOrders && (
+                    <div className="text-center text-gray-500 py-8">Carregando pedidos...</div>
+                  )}
 
-                    <div className="flex gap-2">
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        id={`upload-${product.id}`}
-                        className="hidden"
-                        disabled={isUploading}
-                        onChange={(e) => handleFileChange(e, product.id, product.name)}
-                      />
+                  {!loadingOrders && orders.length === 0 && (
+                    <div className="text-center text-gray-500 py-8">
+                      <p className="text-2xl mb-2">🧾</p>
+                      <p className="text-sm">Nenhum pedido ainda</p>
+                    </div>
+                  )}
 
-                      <Label
-                        htmlFor={`upload-${product.id}`}
-                        className={`flex-1 flex items-center justify-center gap-2 cursor-pointer rounded-md px-4 py-2 text-sm font-medium text-white transition-colors ${
-                          isUploading ? 'bg-zinc-600 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'
-                        }`}
-                      >
-                        {isUploading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Enviando...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            {currentImage ? 'Trocar Foto' : 'Adicionar Foto'}
-                          </>
+                  {orders.map(order => {
+                    const st = STATUS_CONFIG[order.status] ?? STATUS_CONFIG['novo'];
+                    const Icon = st.icon;
+                    const isExpanded = expandedOrder === order.id;
+                    const dataHora = new Date(order.created_at).toLocaleString('pt-BR');
+                    const pagLabel =
+                      order.payment_method === 'pix'    ? '🔵 PIX' :
+                      order.payment_method === 'cartao' ? '💳 Cartão' : '💵 Dinheiro';
+
+                    return (
+                      <div key={order.id} className="bg-gray-800 rounded-xl overflow-hidden">
+                        {/* Linha principal */}
+                        <div className="p-3 flex items-center gap-3 cursor-pointer"
+                          onClick={() => setExpandedOrder(isExpanded ? null : order.id)}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm">{order.customer_name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${st.color}`}>
+                                <Icon size={10} /> {st.label}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">{dataHora} · {pagLabel} · R$ {order.total.toFixed(2)}</p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {order.delivery_type === 'delivery' ? `📍 ${order.address}, ${order.number}` : '🏪 Retirada'}
+                            </p>
+                          </div>
+                          <div className="text-gray-500 text-xs">{isExpanded ? '▲' : '▼'}</div>
+                        </div>
+
+                        {/* Detalhes expandidos */}
+                        {isExpanded && (
+                          <div className="border-t border-gray-700 p-3 space-y-3">
+                            {/* Itens */}
+                            <div>
+                              <p className="text-xs text-gray-400 font-medium mb-1">ITENS</p>
+                              {order.items.map((item: any, i: number) => (
+                                <div key={i} className="flex justify-between text-xs py-0.5">
+                                  <span>{item.quantity}x {item.name}</span>
+                                  <span className="text-gray-400">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                                </div>
+                              ))}
+                              <div className="border-t border-gray-700 mt-2 pt-2 space-y-1">
+                                {order.freight > 0 && (
+                                  <div className="flex justify-between text-xs text-gray-400">
+                                    <span>Frete</span><span>R$ {order.freight.toFixed(2)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between text-sm font-bold">
+                                  <span>Total</span><span className="text-yellow-400">R$ {order.total.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Pagamento */}
+                            <div className="text-xs text-gray-300">
+                              {pagLabel}
+                              {order.payment_method === 'dinheiro' && order.troco && (
+                                <span className="text-gray-400"> · Troco p/ R$ {order.troco.toFixed(2)} (troco: R$ {(order.troco - order.total).toFixed(2)})</span>
+                              )}
+                            </div>
+
+                            {/* GPS */}
+                            {order.gps_lat && order.gps_lng && (
+                              <a href={`https://www.google.com/maps?q=${order.gps_lat},${order.gps_lng}`}
+                                target="_blank" rel="noreferrer"
+                                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                                📍 Ver localização no Maps
+                              </a>
+                            )}
+
+                            {/* Obs */}
+                            {order.observations && (
+                              <p className="text-xs text-gray-400">📝 {order.observations}</p>
+                            )}
+
+                            {/* Status buttons */}
+                            <div>
+                              <p className="text-xs text-gray-400 mb-2">Alterar status:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                                  <button key={key}
+                                    onClick={() => updateStatus(order.id, key)}
+                                    className={`text-xs px-3 py-1 rounded-lg transition-all ${order.status === key ? cfg.color + ' font-bold' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                                    {cfg.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Botão imprimir */}
+                            <button onClick={() => imprimirCupom(order)}
+                              className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
+                              <Printer size={14} /> Imprimir Cupom (80mm)
+                            </button>
+                          </div>
                         )}
-                      </Label>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
 
-                      {currentImage && !isUploading && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRemoveImage(product.id)}
-                          className="px-3 border-zinc-600 hover:bg-red-950 hover:border-red-800"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-400" />
-                        </Button>
-                      )}
+              {/* ── FOTOS ── */}
+              {activeTab === 'fotos' && (
+                <>
+                  <p className="text-gray-400 text-xs text-center mb-2">Clique em "Adicionar Foto" para cada produto</p>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  {products.map(product => (
+                    <div key={product.id} className="flex items-center gap-3 bg-gray-800 rounded-xl p-3">
+                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
+                        {productImages[product.id]
+                          ? <img src={productImages[product.id]} alt={product.name} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center text-gray-500"><Camera size={20} /></div>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{product.name}</p>
+                        {productImages[product.id]
+                          ? <span className="text-xs text-green-400 flex items-center gap-1"><Cloud size={12} /> Nuvem</span>
+                          : <span className="text-xs text-gray-500">Sem foto</span>}
+                      </div>
+                      <button onClick={() => triggerUpload(product.id)} disabled={uploadingId === product.id}
+                        className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-1 transition-colors">
+                        {uploadingId === product.id ? '⏳' : <><Upload size={12} /> Adicionar Foto</>}
+                      </button>
                     </div>
-                  </Card>
-                );
-              })}
+                  ))}
+                </>
+              )}
+
+              {/* ── PRODUTOS ── */}
+              {activeTab === 'produtos' && (
+                <>
+                  <p className="text-gray-400 text-xs text-center mb-2">Edite preço, descrição ou oculte produtos</p>
+                  {products.map(product => {
+                    const ov = overrides[product.id] || {};
+                    return (
+                      <div key={product.id} className="bg-gray-800 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm">{product.name}</span>
+                          <button onClick={() => handleToggleProduct(product.id, !ov.hidden)}
+                            className={`text-xs px-2 py-1 rounded-lg ${ov.hidden ? 'bg-gray-600 text-gray-300' : 'bg-green-700 text-green-200'}`}>
+                            {ov.hidden ? <><EyeOff size={12} className="inline mr-1" />Oculto</> : <><Eye size={12} className="inline mr-1" />Visível</>}
+                          </button>
+                        </div>
+                        <div className="flex gap-2">
+                          <input type="number" step="0.01" defaultValue={ov.price ?? product.price}
+                            className="w-24 bg-gray-700 rounded-lg px-2 py-1 text-sm border border-gray-600 focus:outline-none focus:border-red-500"
+                            onBlur={e => handleSaveProduct(product.id, 'price', e.target.value)} />
+                          <input type="text" defaultValue={ov.description ?? product.description}
+                            className="flex-1 bg-gray-700 rounded-lg px-2 py-1 text-sm border border-gray-600 focus:outline-none focus:border-red-500"
+                            onBlur={e => handleSaveProduct(product.id, 'description', e.target.value)} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* ── LOJA ── */}
+              {activeTab === 'loja' && (
+                <div className="space-y-3">
+                  {([
+                    { label: 'Nome', field: 'name' },
+                    { label: 'Bairro', field: 'neighborhood' },
+                    { label: 'Cidade', field: 'city' },
+                    { label: 'Estado', field: 'state' },
+                    { label: 'Endereço', field: 'address' },
+                    { label: 'Horários', field: 'hours' },
+                    { label: 'WhatsApp (somente números)', field: 'whatsappNumber' },
+                  ] as { label: string; field: keyof StoreConfig }[]).map(({ label, field }) => (
+                    <div key={String(field)}>
+                      <label className="text-gray-400 text-xs block mb-1">{label}</label>
+                      <input type="text" value={String(storeForm[field])}
+                        onChange={e => setStoreForm(prev => ({ ...prev, [field]: e.target.value }))}
+                        className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:border-red-500" />
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-3">
+                    <label className="text-gray-400 text-xs">Status da loja</label>
+                    <button onClick={() => setStoreForm(prev => ({ ...prev, isOpen: !prev.isOpen }))}
+                      className={`px-3 py-1 rounded-lg text-xs font-medium ${storeForm.isOpen ? 'bg-green-700 text-green-200' : 'bg-red-800 text-red-200'}`}>
+                      {storeForm.isOpen ? '🟢 Aberta' : '🔴 Fechada'}
+                    </button>
+                  </div>
+                  <Button onClick={handleSaveStore} className="w-full bg-red-600 hover:bg-red-700 mt-2">
+                    💾 Salvar na nuvem
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-gray-700 flex justify-between items-center">
+              <span className="text-gray-500 text-xs">Grill Central Admin</span>
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300 text-xs">Sair</button>
             </div>
           </>
         )}
 
-        {activeTab === 'produtos' && (
-          <div className="p-6 space-y-3">
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mb-4">
-              <p className="text-sm text-yellow-300">
-                ✏️ Edite nome, preço e descrição. Use 👁️ para ocultar/mostrar no cardápio.
-              </p>
-            </div>
-
-            {products.map((product) => {
-              const ov = overrides[product.id] || {};
-              const isActive = ov.active ?? true;
-              const isEditing = editingId === product.id;
-              const hasOverride = Object.keys(ov).length > 0;
-
-              return (
-                <Card
-                  key={product.id}
-                  className={`bg-zinc-800 border-zinc-700 p-4 transition-all ${!isActive ? 'opacity-50' : ''}`}
-                >
-                  {isEditing ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-zinc-400 font-mono">{product.id}</span>
-                        <span className="text-xs text-yellow-400">editando...</span>
-                      </div>
-
-                      <div>
-                        <Label className="text-xs text-zinc-400">Nome</Label>
-                        <Input
-                          value={editForm.name}
-                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                          className="bg-zinc-700 border-zinc-600 mt-1"
-                        />
-                      </div>
-
-                      <div>
-                        <Label className="text-xs text-zinc-400">Preço (R$)</Label>
-                        <Input
-                          value={editForm.price}
-                          onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))}
-                          className="bg-zinc-700 border-zinc-600 mt-1"
-                          placeholder="29.90"
-                        />
-                      </div>
-
-                      <div>
-                        <Label className="text-xs text-zinc-400">Descrição</Label>
-                        <Textarea
-                          value={editForm.description}
-                          onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                          className="bg-zinc-700 border-zinc-600 mt-1 resize-none"
-                          rows={2}
-                        />
-                      </div>
-
-                      <div className="flex gap-2 pt-1">
-                        <Button
-                          size="sm"
-                          onClick={() => saveEdit(product.id)}
-                          className="bg-green-600 hover:bg-green-700 gap-1"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          Salvar
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setEditingId(null)}
-                          className="border-zinc-600"
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-sm">{ov.name ?? product.name}</h3>
-
-                          {hasOverride && (
-                            <span className="text-[10px] bg-yellow-900/50 border border-yellow-600/40 text-yellow-400 px-1.5 py-0.5 rounded">
-                              editado
-                            </span>
-                          )}
-
-                          {!isActive && (
-                            <span className="text-[10px] bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded">
-                              oculto
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-red-400 font-bold text-sm mt-0.5">
-                          R$ {(ov.price ?? product.price).toFixed(2).replace('.', ',')}
-                        </p>
-
-                        <p className="text-zinc-500 text-xs mt-0.5 line-clamp-1">
-                          {ov.description ?? product.description}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => toggleActive(product.id)}
-                          className="px-2 text-zinc-400 hover:text-white"
-                          title={isActive ? 'Ocultar' : 'Mostrar'}
-                        >
-                          {isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => startEdit(product.id)}
-                          className="px-2 text-zinc-400 hover:text-white"
-                        >
-                          ✏️
-                        </Button>
-
-                        {hasOverride && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => resetProduct(product.id)}
-                            className="px-2 text-zinc-400 hover:text-yellow-400"
-                            title="Restaurar padrão"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
+        {/* Toast */}
+        {toast && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm px-4 py-2 rounded-xl shadow-lg border border-gray-600 whitespace-nowrap">
+            {toast}
           </div>
         )}
-
-        {activeTab === 'loja' && (
-          <div className="p-6 max-w-lg space-y-4">
-            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-              <p className="text-sm text-green-300">
-                ✅ <strong>Dados salvos na nuvem.</strong> Alterações aparecem em todos os dispositivos imediatamente.
-              </p>
-            </div>
-
-            {storeForm ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-zinc-400">Bairro</Label>
-                    <Input
-                      value={storeForm.neighborhood}
-                      onChange={(e) =>
-                        setStoreForm((f) => (f ? { ...f, neighborhood: e.target.value } : f))
-                      }
-                      className="bg-zinc-800 border-zinc-700 mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-zinc-400">Cidade</Label>
-                    <Input
-                      value={storeForm.city}
-                      onChange={(e) =>
-                        setStoreForm((f) => (f ? { ...f, city: e.target.value } : f))
-                      }
-                      className="bg-zinc-800 border-zinc-700 mt-1"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-xs text-zinc-400">Estado (ex: SC)</Label>
-                  <Input
-                    value={storeForm.state}
-                    onChange={(e) =>
-                      setStoreForm((f) => (f ? { ...f, state: e.target.value } : f))
-                    }
-                    className="bg-zinc-800 border-zinc-700 mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-zinc-400">Endereço completo</Label>
-                  <Input
-                    value={storeForm.address}
-                    onChange={(e) =>
-                      setStoreForm((f) => (f ? { ...f, address: e.target.value } : f))
-                    }
-                    className="bg-zinc-800 border-zinc-700 mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-zinc-400">Horário de funcionamento</Label>
-                  <Input
-                    value={storeForm.hours}
-                    onChange={(e) =>
-                      setStoreForm((f) => (f ? { ...f, hours: e.target.value } : f))
-                    }
-                    className="bg-zinc-800 border-zinc-700 mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-zinc-400">WhatsApp (com DDI, sem +)</Label>
-                  <Input
-                    value={storeForm.whatsappNumber}
-                    onChange={(e) =>
-                      setStoreForm((f) => (f ? { ...f, whatsappNumber: e.target.value } : f))
-                    }
-                    className="bg-zinc-800 border-zinc-700 mt-1"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg border border-zinc-700">
-                  <div>
-                    <p className="text-sm font-semibold">Status da loja</p>
-                    <p className="text-xs text-zinc-500">Exibe "Aberto agora" ou "Fechado"</p>
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      setStoreForm((f) => (f ? { ...f, isOpen: !f.isOpen } : f))
-                    }
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                      storeForm.isOpen
-                        ? 'bg-green-700 text-green-100'
-                        : 'bg-zinc-600 text-zinc-300'
-                    }`}
-                  >
-                    {storeForm.isOpen ? '🟢 Aberto' : '🔴 Fechado'}
-                  </button>
-                </div>
-
-                <Button
-                  onClick={handleSaveStore}
-                  disabled={savingStore}
-                  className="w-full bg-green-600 hover:bg-green-700 gap-2"
-                >
-                  {savingStore ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Salvar na nuvem
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-zinc-400 text-sm">Carregando configurações...</p>
-            )}
-          </div>
-        )}
-
-        <div className="border-t border-zinc-800 p-4 text-center">
-          <p className="text-xs text-zinc-500">🔒 Painel Admin · Grill Central</p>
-        </div>
-      </Card>
+      </div>
     </div>
   );
 }
