@@ -124,9 +124,9 @@ export default function Home() {
 
         <div className="relative z-10 px-4 pt-10 pb-5 flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-              style={{ background: '#dc2626', boxShadow: '0 0 20px #dc262688' }}>
-              <Flame className="w-7 h-7 text-white" />
+            <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0 border border-white/10 bg-black/20"
+              style={{ boxShadow: '0 0 20px rgba(220,38,38,0.35)' }}>
+              <img src="/logo.png" alt={storeConfig.name} className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="text-2xl font-black tracking-wide leading-tight">{storeConfig.name}</h1>
