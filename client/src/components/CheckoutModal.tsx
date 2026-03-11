@@ -188,13 +188,6 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
       created_at:      new Date().toISOString(),
     };
 
-    // Salva no Supabase
-    const { data: savedOrder } = await supabase
-      .from('orders')
-      .insert(pedidoData)
-      .select()
-      .single();
-
     // Monta mensagem WhatsApp
     const pagamentoLabel =
       formData.paymentMethod === 'pix'    ? '💳 PIX'    :
@@ -233,14 +226,18 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
       `💳 *Pagamento:* ${pagamentoLabel}${trocoInfo}` +
       (formData.observations ? `\n\n📝 *Obs:* ${formData.observations}` : '');
 
+    // 1️⃣ WhatsApp PRIMEIRO — sempre funciona
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
-
-    // Dispara evento para Admin Panel atualizar lista
-    window.dispatchEvent(new CustomEvent('novoPedido', { detail: savedOrder ?? pedidoData }));
-
     clearCart();
     toast.success('Pedido enviado! Aguarde o retorno pelo WhatsApp.');
     onClose();
+
+    // 2️⃣ Supabase em background — não bloqueia o WhatsApp
+    supabase.from('orders').insert(pedidoData).select().single()
+      .then(({ data }) => {
+        window.dispatchEvent(new CustomEvent('novoPedido', { detail: data ?? pedidoData }));
+      })
+      .catch(err => console.warn('Supabase orders insert:', err));
   };
 
   const isButtonDisabled =
