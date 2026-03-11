@@ -263,19 +263,31 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
     }
   }
 
-  function loadOverrides() {
+  async function loadOverrides() {
     try {
-      const raw = localStorage.getItem('productOverrides');
-      if (raw) setOverrides(JSON.parse(raw));
+      const { data } = await supabase.from('product_overrides').select('*');
+      if (data) {
+        const map: Record<string, any> = {};
+        data.forEach((r: any) => {
+          map[r.product_id] = { price: r.price, description: r.description, hidden: !!r.hidden };
+        });
+        setOverrides(map);
+      }
     } catch (_) {}
   }
 
-  function saveOverride(id: string, field: string, value: any) {
-    const updated = { ...overrides, [id]: { ...overrides[id], [field]: value } };
+  async function saveOverride(id: string, field: string, value: any) {
+    const updated = { ...overrides, [id]: { ...(overrides[id] ?? {}), [field]: value } };
     setOverrides(updated);
-    try { localStorage.setItem('productOverrides', JSON.stringify(updated)); } catch (_) {}
-    window.dispatchEvent(new CustomEvent('productOverridesUpdated', { detail: updated }));
-    showToast('✅ Produto atualizado!');
+    try {
+      const row = updated[id] ?? {};
+      await supabase.from('product_overrides').upsert(
+        { product_id: id, price: row.price ?? null, description: row.description ?? null, hidden: row.hidden ?? false, updated_at: new Date().toISOString() },
+        { onConflict: 'product_id' }
+      );
+      window.dispatchEvent(new CustomEvent('productOverridesUpdated'));
+      showToast('✅ Produto salvo!');
+    } catch (_) { showToast('❌ Erro ao salvar produto'); }
   }
 
   async function deleteOrder(orderId: string) {
@@ -704,7 +716,25 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                   <div>
                     <label className="text-zinc-400 text-xs block mb-1">Status da loja</label>
                     <button
-                      onClick={() => setStoreForm(prev => ({ ...prev, isOpen: !prev.isOpen }))}
+                      onClick={async () => {
+                        const newVal = !storeForm.isOpen;
+                        setStoreForm(prev => ({ ...prev, isOpen: newVal }));
+                        try {
+                          await supabase.from('store_config').upsert({
+                            id: 1,
+                            name: storeForm.name,
+                            neighborhood: storeForm.neighborhood,
+                            city: storeForm.city,
+                            state: storeForm.state,
+                            address: storeForm.address,
+                            hours: storeForm.hours,
+                            whatsapp: storeForm.whatsapp,
+                            is_open: newVal,
+                          });
+                          showToast(newVal ? '🟢 Loja aberta!' : '🔴 Loja fechada!');
+                          window.dispatchEvent(new CustomEvent('storeConfigUpdated'));
+                        } catch (_) { showToast('❌ Erro ao salvar status'); }
+                      }}
                       className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
                         storeForm.isOpen
                           ? 'bg-green-700 text-green-100 hover:bg-green-600'
