@@ -42,10 +42,10 @@ interface Order {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  novo:       { label: 'Novo',      color: 'bg-yellow-600 text-yellow-100' },
+  novo: { label: 'Novo', color: 'bg-yellow-600 text-yellow-100' },
   preparando: { label: 'Preparando', color: 'bg-blue-600 text-blue-100' },
-  entregue:   { label: 'Entregue',  color: 'bg-green-700 text-green-100' },
-  cancelado:  { label: 'Cancelado', color: 'bg-red-700 text-red-100' },
+  entregue: { label: 'Entregue', color: 'bg-green-700 text-green-100' },
+  cancelado: { label: 'Cancelado', color: 'bg-red-700 text-red-100' },
 };
 
 /* ─────────────────── Som Ding-Dong ─────────────────── */
@@ -102,24 +102,24 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
 
   /* Auth */
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword]               = useState('');
-  const [passwordError, setPasswordError]     = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   /* UI */
   const [activeTab, setActiveTab] = useState<'pedidos' | 'fotos' | 'produtos' | 'loja'>('pedidos');
-  const [toast, setToast]         = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   /* Pedidos */
-  const [orders, setOrders]             = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
-  const lastOrderCount                    = useRef<number>(-1);
+  const lastOrderCount = useRef<number>(-1);
 
   /* Fotos */
-  const [productImages, setProductImages]   = useState<Record<string, string>>({});
-  const [uploadingId, setUploadingId]       = useState<string | null>(null);
+  const [productImages, setProductImages] = useState<Record<string, string>>({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
-  const fileInputRef                         = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* Produtos */
   const [overrides, setOverrides] = useState<Record<string, { price?: number; description?: string; hidden?: boolean }>>({});
@@ -168,19 +168,37 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
           .select('id')
           .order('created_at', { ascending: false })
           .limit(50);
+
         if (!data) return;
+
         const count = data.length;
-        if (lastOrderCount.current === -1) { lastOrderCount.current = count; return; }
+
+        if (lastOrderCount.current === -1) {
+          lastOrderCount.current = count;
+          return;
+        }
+
         if (count > lastOrderCount.current) {
           const novos = count - lastOrderCount.current;
           lastOrderCount.current = count;
-          const { data: full } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(50);
+
+          const { data: full } = await supabase
+            .from('orders')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(50);
+
           if (full) setOrders(full);
-          for (let i = 0; i < Math.min(novos, 3); i++) setTimeout(() => tocarNovoPedido(), i * 2000);
+
+          for (let i = 0; i < Math.min(novos, 3); i++) {
+            setTimeout(() => tocarNovoPedido(), i * 2000);
+          }
+
           showToast(`🛒 ${novos} novo${novos > 1 ? 's pedidos' : ' pedido'}!`);
         }
       } catch (_) {}
     }, 30000);
+
     return () => clearInterval(poll);
   }, [isAuthenticated]);
 
@@ -195,34 +213,45 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
       const { data } = await supabase.from('product_images').select('product_id, image_url');
       if (data) {
         const map: Record<string, string> = {};
-        data.forEach((r: any) => { map[r.product_id] = r.image_url; });
+        data.forEach((r: any) => {
+          map[r.product_id] = r.image_url;
+        });
         setProductImages(map);
       }
     } catch (_) {}
   }
 
-  // Busca imagem com fallback por slug (trata diferença xis-salada vs xis_salada etc.)
   function getProductImage(productId: string, productName: string): string | undefined {
     if (productImages[productId]) return productImages[productId];
-    // tenta slug por nome
+
     const slug = productName.toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
     if (productImages[slug]) return productImages[slug];
-    // busca parcial
+
     const found = Object.entries(productImages).find(([k]) =>
       k.replace(/[_\s]/g, '-') === slug ||
       slug.includes(k.replace(/[_\s]/g, '-')) ||
       k.replace(/[_\s]/g, '-').includes(slug)
     );
+
     return found?.[1];
   }
 
   async function loadOrders() {
     setLoadingOrders(true);
     try {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(50);
-      if (data) { setOrders(data); lastOrderCount.current = data.length; }
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (data) {
+        setOrders(data);
+        lastOrderCount.current = data.length;
+      }
     } catch (_) {}
     setLoadingOrders(false);
   }
@@ -230,35 +259,43 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
   async function loadStoreConfig() {
     try {
       const { data } = await supabase.from('store_config').select('*').eq('id', 1).maybeSingle();
-      if (data) setStoreForm({
-        name:         data.name         ?? storeForm.name,
-        neighborhood: data.neighborhood ?? storeForm.neighborhood,
-        city:         data.city         ?? storeForm.city,
-        state:        data.state        ?? storeForm.state,
-        address:      data.address      ?? storeForm.address,
-        hours:        data.hours        ?? storeForm.hours,
-        whatsapp:     data.whatsapp     ?? storeForm.whatsapp,
-        isOpen:       data.is_open      ?? storeForm.isOpen,
-      });
+      if (data) {
+        setStoreForm(prev => ({
+          name: data.name ?? prev.name,
+          neighborhood: data.neighborhood ?? prev.neighborhood,
+          city: data.city ?? prev.city,
+          state: data.state ?? prev.state,
+          address: data.address ?? prev.address,
+          hours: data.hours ?? prev.hours,
+          whatsapp: data.whatsapp ?? prev.whatsapp,
+          isOpen: data.is_open ?? prev.isOpen,
+        }));
+      }
     } catch (_) {}
   }
 
   async function saveStoreConfig() {
     try {
-      await supabase.from('store_config').upsert({
-        id: 1,
-        name:         storeForm.name,
-        neighborhood: storeForm.neighborhood,
-        city:         storeForm.city,
-        state:        storeForm.state,
-        address:      storeForm.address,
-        hours:        storeForm.hours,
-        whatsapp:     storeForm.whatsapp,
-        is_open:      storeForm.isOpen,
-      });
+      const { error } = await supabase
+        .from('store_config')
+        .update({
+          name: storeForm.name,
+          neighborhood: storeForm.neighborhood,
+          city: storeForm.city,
+          state: storeForm.state,
+          address: storeForm.address,
+          hours: storeForm.hours,
+          whatsapp: storeForm.whatsapp,
+          is_open: storeForm.isOpen,
+        })
+        .eq('id', 1);
+
+      if (error) throw error;
+
       showToast('✅ Configurações salvas!');
       window.dispatchEvent(new CustomEvent('storeConfigUpdated'));
-    } catch (_) {
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
       showToast('❌ Erro ao salvar configurações');
     }
   }
@@ -269,7 +306,11 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
       if (data) {
         const map: Record<string, any> = {};
         data.forEach((r: any) => {
-          map[r.product_id] = { price: r.price, description: r.description, hidden: !!r.hidden };
+          map[r.product_id] = {
+            price: r.price,
+            description: r.description,
+            hidden: !!r.hidden,
+          };
         });
         setOverrides(map);
       }
@@ -279,34 +320,50 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
   async function saveOverride(id: string, field: string, value: any) {
     const updated = { ...overrides, [id]: { ...(overrides[id] ?? {}), [field]: value } };
     setOverrides(updated);
+
     try {
       const row = updated[id] ?? {};
       await supabase.from('product_overrides').upsert(
-        { product_id: id, price: row.price ?? null, description: row.description ?? null, hidden: row.hidden ?? false, updated_at: new Date().toISOString() },
+        {
+          product_id: id,
+          price: row.price ?? null,
+          description: row.description ?? null,
+          hidden: row.hidden ?? false,
+          updated_at: new Date().toISOString(),
+        },
         { onConflict: 'product_id' }
       );
+
       window.dispatchEvent(new CustomEvent('productOverridesUpdated'));
       showToast('✅ Produto salvo!');
-    } catch (_) { showToast('❌ Erro ao salvar produto'); }
+    } catch (_) {
+      showToast('❌ Erro ao salvar produto');
+    }
   }
 
   async function deleteOrder(orderId: string) {
     if (!confirm('Excluir este pedido?')) return;
+
     try {
       await supabase.from('orders').delete().eq('id', orderId);
       setOrders(prev => prev.filter(o => o.id !== orderId));
       showToast('🗑️ Pedido excluído');
-    } catch (_) { showToast('❌ Erro ao excluir'); }
+    } catch (_) {
+      showToast('❌ Erro ao excluir');
+    }
   }
 
   async function clearAllOrders() {
     if (!confirm('Tem certeza que deseja LIMPAR TODOS os pedidos? Esta ação não pode ser desfeita.')) return;
+
     try {
       await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       setOrders([]);
       lastOrderCount.current = 0;
       showToast('🗑️ Todos os pedidos foram limpos!');
-    } catch (_) { showToast('❌ Erro ao limpar pedidos'); }
+    } catch (_) {
+      showToast('❌ Erro ao limpar pedidos');
+    }
   }
 
   async function updateStatus(orderId: string, status: string) {
@@ -314,7 +371,9 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
       await supabase.from('orders').update({ status }).eq('id', orderId);
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
       showToast(`✅ Status: ${STATUS_CONFIG[status]?.label}`);
-    } catch (_) { showToast('❌ Erro ao atualizar status'); }
+    } catch (_) {
+      showToast('❌ Erro ao atualizar status');
+    }
   }
 
   function handleUploadClick(productId: string) {
@@ -324,23 +383,37 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    const id   = uploadTargetId;
+    const id = uploadTargetId;
     if (!file || !id) return;
+
     setUploadingId(id);
+
     try {
-      const blob    = await resizeImage(file);
+      const blob = await resizeImage(file);
       const formData = new FormData();
       formData.append('image', blob, 'photo.jpg');
-      const res  = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
+
+      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+        method: 'POST',
+        body: formData,
+      });
+
       const json = await res.json();
       if (!json.success) throw new Error('ImgBB falhou');
+
       const url = json.data.url;
-      await supabase.from('product_images').upsert({ product_id: id, image_url: url }, { onConflict: 'product_id' });
+
+      await supabase.from('product_images').upsert(
+        { product_id: id, image_url: url },
+        { onConflict: 'product_id' }
+      );
+
       setProductImages(prev => ({ ...prev, [id]: url }));
       showToast('✅ Foto salva!');
     } catch (_) {
       showToast('❌ Erro ao enviar foto');
     }
+
     setUploadingId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
@@ -348,10 +421,24 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
   function printOrder(order: Order) {
     const w = window.open('', '_blank', 'width=380,height=700');
     if (!w) return;
-    const dt    = new Date(order.created_at).toLocaleString('pt-BR');
-    const items = order.items.map((i: any) => `${i.quantity}x ${i.name} — R$ ${Number(i.price).toFixed(2)}`).join('\n');
-    const pay   = order.payment_method === 'pix' ? 'PIX' : order.payment_method === 'cartao' ? 'Cartão' : `Dinheiro${order.troco ? ` (troco p/ R$ ${Number(order.troco).toFixed(2)})` : ''}`;
-    const addr  = order.delivery_type === 'delivery' ? `Endereço: ${order.address}, ${order.number}` : 'Retirada no local';
+
+    const dt = new Date(order.created_at).toLocaleString('pt-BR');
+    const items = order.items
+      .map((i: any) => `${i.quantity}x ${i.name} — R$ ${Number(i.price).toFixed(2)}`)
+      .join('\n');
+
+    const pay =
+      order.payment_method === 'pix'
+        ? 'PIX'
+        : order.payment_method === 'cartao'
+        ? 'Cartão'
+        : `Dinheiro${order.troco ? ` (troco p/ R$ ${Number(order.troco).toFixed(2)})` : ''}`;
+
+    const addr =
+      order.delivery_type === 'delivery'
+        ? `Endereço: ${order.address}, ${order.number}`
+        : 'Retirada no local';
+
     w.document.write(`<html><head><meta charset="utf-8"><title>Cupom</title>
 <style>body{font-family:monospace;font-size:12px;width:300px;margin:0 auto;padding:8px}
 h2{text-align:center;font-size:14px}hr{border:1px dashed #000}pre{white-space:pre-wrap}</style></head>
@@ -385,29 +472,37 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
       style={{ zIndex: 9999 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* Toast */}
       {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-600 text-white px-4 py-2 rounded-xl text-sm shadow-lg" style={{ zIndex: 10000 }}>
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-600 text-white px-4 py-2 rounded-xl text-sm shadow-lg"
+          style={{ zIndex: 10000 }}
+        >
           {toast}
         </div>
       )}
 
-      {/* Input oculto para upload */}
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
 
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 bg-zinc-800 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-red-400" />
             <span className="text-white font-bold text-sm">Admin — Grill Central</span>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-700 transition">
+          <button
+            onClick={onClose}
+            className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-700 transition"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* LOGIN */}
         {!isAuthenticated ? (
           <div className="flex flex-col items-center justify-center flex-1 p-8 gap-4">
             <Lock className="w-10 h-10 text-zinc-400" />
@@ -431,7 +526,6 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
           </div>
         ) : (
           <>
-            {/* TABS */}
             <div className="flex border-b border-zinc-700 bg-zinc-800 flex-shrink-0 overflow-x-auto">
               {(['pedidos', 'fotos', 'produtos', 'loja'] as const).map(tab => (
                 <button
@@ -443,15 +537,18 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                       : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  {tab === 'pedidos' ? '🧾 Pedidos' : tab === 'fotos' ? '📷 Fotos' : tab === 'produtos' ? '🍔 Produtos' : '🏪 Loja'}
+                  {tab === 'pedidos'
+                    ? '🧾 Pedidos'
+                    : tab === 'fotos'
+                    ? '📷 Fotos'
+                    : tab === 'produtos'
+                    ? '🍔 Produtos'
+                    : '🏪 Loja'}
                 </button>
               ))}
             </div>
 
-            {/* CONTENT */}
             <div className="flex-1 overflow-y-auto p-4">
-
-              {/* ── PEDIDOS ── */}
               {activeTab === 'pedidos' && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between mb-3">
@@ -496,7 +593,13 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                   {orders.map(order => {
                     const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.novo;
                     const isExpanded = expandedOrder === order.id;
-                    const dt = new Date(order.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                    const dt = new Date(order.created_at).toLocaleString('pt-BR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+
                     return (
                       <div key={order.id} className="bg-zinc-800 rounded-xl border border-zinc-700 overflow-hidden">
                         <div
@@ -523,16 +626,25 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                               </div>
                               <div>
                                 <p className="text-zinc-400">Tipo</p>
-                                <p className="text-white capitalize">{order.delivery_type === 'delivery' ? '🛵 Entrega' : '🏪 Retirada'}</p>
+                                <p className="text-white capitalize">
+                                  {order.delivery_type === 'delivery' ? '🛵 Entrega' : '🏪 Retirada'}
+                                </p>
                               </div>
+
                               {order.delivery_type === 'delivery' && order.address && (
                                 <div className="col-span-2">
                                   <p className="text-zinc-400">Endereço</p>
                                   <p className="text-white">{order.address}, {order.number}</p>
                                   {order.reference && <p className="text-zinc-400 text-xs">{order.reference}</p>}
                                   {order.gps_lat && (
-                                    <a href={`https://www.google.com/maps?q=${order.gps_lat},${order.gps_lng}`} target="_blank" rel="noreferrer"
-                                      className="text-blue-400 text-xs hover:underline">📍 Ver no Maps</a>
+                                    <a
+                                      href={`https://www.google.com/maps?q=${order.gps_lat},${order.gps_lng}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-blue-400 text-xs hover:underline"
+                                    >
+                                      📍 Ver no Maps
+                                    </a>
                                   )}
                                 </div>
                               )}
@@ -549,12 +661,29 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                             </div>
 
                             <div className="border-t border-zinc-700 pt-2 text-xs">
-                              <div className="flex justify-between text-zinc-400"><span>Subtotal</span><span>R$ {Number(order.subtotal).toFixed(2)}</span></div>
-                              {order.freight > 0 && <div className="flex justify-between text-zinc-400"><span>Frete</span><span>R$ {Number(order.freight).toFixed(2)}</span></div>}
-                              <div className="flex justify-between text-white font-bold mt-1"><span>Total</span><span>R$ {Number(order.total).toFixed(2)}</span></div>
+                              <div className="flex justify-between text-zinc-400">
+                                <span>Subtotal</span>
+                                <span>R$ {Number(order.subtotal).toFixed(2)}</span>
+                              </div>
+                              {order.freight > 0 && (
+                                <div className="flex justify-between text-zinc-400">
+                                  <span>Frete</span>
+                                  <span>R$ {Number(order.freight).toFixed(2)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between text-white font-bold mt-1">
+                                <span>Total</span>
+                                <span>R$ {Number(order.total).toFixed(2)}</span>
+                              </div>
                               <div className="flex justify-between text-zinc-400 mt-1">
                                 <span>Pagamento</span>
-                                <span>{order.payment_method === 'pix' ? 'PIX' : order.payment_method === 'cartao' ? 'Cartão' : `Dinheiro${order.troco ? ` (troco p/ R$${Number(order.troco).toFixed(2)})` : ''}`}</span>
+                                <span>
+                                  {order.payment_method === 'pix'
+                                    ? 'PIX'
+                                    : order.payment_method === 'cartao'
+                                    ? 'Cartão'
+                                    : `Dinheiro${order.troco ? ` (troco p/ R$${Number(order.troco).toFixed(2)})` : ''}`}
+                                </span>
                               </div>
                             </div>
 
@@ -578,12 +707,14 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                                   {STATUS_CONFIG[s].label}
                                 </button>
                               ))}
+
                               <button
                                 onClick={() => printOrder(order)}
                                 className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs flex items-center gap-1 transition"
                               >
                                 <Printer className="w-3 h-3" /> Imprimir
                               </button>
+
                               <button
                                 onClick={() => deleteOrder(order.id)}
                                 className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-300 rounded-lg text-xs flex items-center gap-1 ml-auto transition"
@@ -600,18 +731,22 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                 </div>
               )}
 
-              {/* ── FOTOS ── */}
               {activeTab === 'fotos' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-zinc-400 text-xs">Clique em "Foto" para enviar imagem de cada produto</p>
-                    <button onClick={loadImages} className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1 transition">
+                    <button
+                      onClick={loadImages}
+                      className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1 transition"
+                    >
                       <RefreshCw className="w-3 h-3" /> Recarregar
                     </button>
                   </div>
+
                   {safeProducts.length === 0 && (
                     <p className="text-zinc-500 text-xs text-center py-4">Nenhum produto disponível</p>
                   )}
+
                   {safeProducts.map(product => (
                     <div key={product.id} className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3 border border-zinc-700">
                       <div className="w-14 h-14 rounded-lg overflow-hidden bg-zinc-700 flex-shrink-0 flex items-center justify-center">
@@ -620,10 +755,12 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                           : <span className="text-2xl">🍔</span>
                         }
                       </div>
+
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-semibold truncate">{product.name}</p>
                         <p className="text-zinc-400 text-xs">R$ {Number(product.price).toFixed(2)}</p>
                       </div>
+
                       <button
                         onClick={() => handleUploadClick(product.id)}
                         disabled={uploadingId === product.id}
@@ -640,14 +777,15 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                 </div>
               )}
 
-              {/* ── PRODUTOS ── */}
               {activeTab === 'produtos' && (
                 <div className="space-y-3">
                   {safeProducts.length === 0 && (
                     <p className="text-zinc-500 text-xs text-center py-4">Nenhum produto disponível</p>
                   )}
+
                   {safeProducts.map(product => {
                     const ov = overrides[product.id] ?? {};
+
                     return (
                       <div key={product.id} className="bg-zinc-800 rounded-xl p-3 border border-zinc-700 space-y-2">
                         <div className="flex items-center justify-between">
@@ -664,6 +802,7 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                             {ov.hidden ? 'Oculto' : 'Visível'}
                           </button>
                         </div>
+
                         <div className="flex gap-2">
                           <input
                             type="number"
@@ -690,7 +829,6 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                 </div>
               )}
 
-              {/* ── LOJA ── */}
               {activeTab === 'loja' && (
                 <div className="space-y-3">
                   {[
@@ -719,21 +857,30 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                       onClick={async () => {
                         const newVal = !storeForm.isOpen;
                         setStoreForm(prev => ({ ...prev, isOpen: newVal }));
+
                         try {
-                          await supabase.from('store_config').upsert({
-                            id: 1,
-                            name: storeForm.name,
-                            neighborhood: storeForm.neighborhood,
-                            city: storeForm.city,
-                            state: storeForm.state,
-                            address: storeForm.address,
-                            hours: storeForm.hours,
-                            whatsapp: storeForm.whatsapp,
-                            is_open: newVal,
-                          });
+                          const { error } = await supabase
+                            .from('store_config')
+                            .update({
+                              name: storeForm.name,
+                              neighborhood: storeForm.neighborhood,
+                              city: storeForm.city,
+                              state: storeForm.state,
+                              address: storeForm.address,
+                              hours: storeForm.hours,
+                              whatsapp: storeForm.whatsapp,
+                              is_open: newVal,
+                            })
+                            .eq('id', 1);
+
+                          if (error) throw error;
+
                           showToast(newVal ? '🟢 Loja aberta!' : '🔴 Loja fechada!');
                           window.dispatchEvent(new CustomEvent('storeConfigUpdated'));
-                        } catch (_) { showToast('❌ Erro ao salvar status'); }
+                        } catch (error) {
+                          console.error('Erro ao salvar status:', error);
+                          showToast('❌ Erro ao salvar status');
+                        }
                       }}
                       className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
                         storeForm.isOpen
@@ -753,10 +900,8 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                   </button>
                 </div>
               )}
-
             </div>
 
-            {/* Footer logout */}
             <div className="border-t border-zinc-700 px-4 py-2 bg-zinc-800 flex-shrink-0 flex justify-end">
               <button
                 onClick={() => { setIsAuthenticated(false); setPassword(''); }}
