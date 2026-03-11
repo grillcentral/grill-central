@@ -52,25 +52,59 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 function tocarNovoPedido() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const freqs = [523, 659, 784, 1047];
-    freqs.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
+
+    // DING (nota alta)
+    const playNote = (freq: number, startTime: number, duration: number, volume: number) => {
+      const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.frequency.value = freq;
       osc.type = 'sine';
-      const t = ctx.currentTime + i * 0.18;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.4, t + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-      osc.start(t);
-      osc.stop(t + 0.36);
-    });
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.05);
+    };
+
+    const t = ctx.currentTime;
+
+    // DING — nota aguda
+    playNote(1318, t,        0.6, 0.5);  // Mi5
+    playNote(1047, t + 0.02, 0.6, 0.3); // Dó5 (harmônico)
+
+    // DONG — nota grave (0.7s depois)
+    playNote(880,  t + 0.7,  0.8, 0.5); // Lá4
+    playNote(659,  t + 0.72, 0.8, 0.3); // Mi4 (harmônico)
+
+    // Repete uma vez após 1.8s
+    setTimeout(() => tocarNovoPedido._once?.(), 1800);
   } catch (e) {
     console.warn('Audio error:', e);
   }
 }
+// Toca só 2x no total (evita loop infinito)
+tocarNovoPedido._once = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const play = (freq: number, t: number, dur: number, vol: number) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.start(t); o.stop(t + dur + 0.05);
+    };
+    const t = ctx.currentTime;
+    play(1318, t, 0.6, 0.4);
+    play(1047, t + 0.02, 0.6, 0.25);
+    play(880,  t + 0.7, 0.8, 0.4);
+    play(659,  t + 0.72, 0.8, 0.25);
+  } catch (_) {}
+};
+
 
 /* ─────────────────── Resize Imagem ─────────────────── */
 async function resizeImage(file: File): Promise<Blob> {
