@@ -49,11 +49,11 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 /* ─────────────────── Som Ding-Dong ─────────────────── */
-function tocarNovoPedido() {
+// FIX: usa parâmetro `repetition` em vez de ._once (TypeScript inválido)
+function tocarNovoPedido(repetition = 0) {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-    // DING (nota alta)
     const playNote = (freq: number, startTime: number, duration: number, volume: number) => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -78,33 +78,14 @@ function tocarNovoPedido() {
     playNote(880,  t + 0.7,  0.8, 0.5); // Lá4
     playNote(659,  t + 0.72, 0.8, 0.3); // Mi4 (harmônico)
 
-    // Repete uma vez após 1.8s
-    setTimeout(() => tocarNovoPedido._once?.(), 1800);
+    // Repete uma vez (toca 2x no total)
+    if (repetition < 1) {
+      setTimeout(() => tocarNovoPedido(repetition + 1), 1800);
+    }
   } catch (e) {
     console.warn('Audio error:', e);
   }
 }
-// Toca só 2x no total (evita loop infinito)
-tocarNovoPedido._once = () => {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const play = (freq: number, t: number, dur: number, vol: number) => {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.type = 'sine'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(vol, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      o.start(t); o.stop(t + dur + 0.05);
-    };
-    const t = ctx.currentTime;
-    play(1318, t, 0.6, 0.4);
-    play(1047, t + 0.02, 0.6, 0.25);
-    play(880,  t + 0.7, 0.8, 0.4);
-    play(659,  t + 0.72, 0.8, 0.25);
-  } catch (_) {}
-};
-
 
 /* ─────────────────── Resize Imagem ─────────────────── */
 async function resizeImage(file: File): Promise<Blob> {
@@ -308,11 +289,13 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
     } catch (_) {}
   }
 
+  // FIX: usa upsert com id:1 para criar a linha se não existir
   async function saveStoreConfig() {
     try {
       const { error } = await supabase
         .from('store_config')
-        .update({
+        .upsert({
+          id: 1,
           name: storeForm.name,
           neighborhood: storeForm.neighborhood,
           city: storeForm.city,
@@ -321,8 +304,7 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
           hours: storeForm.hours,
           whatsapp: storeForm.whatsapp,
           is_open: storeForm.isOpen,
-        })
-        .eq('id', 1);
+        });
 
       if (error) throw error;
 
@@ -589,7 +571,7 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                     <p className="text-zinc-400 text-xs">Últimos 50 pedidos</p>
                     <div className="flex gap-2 flex-wrap justify-end">
                       <button
-                        onClick={tocarNovoPedido}
+                        onClick={() => tocarNovoPedido()}
                         className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition"
                         title="Testar som"
                       >
@@ -887,6 +869,7 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
 
                   <div>
                     <label className="text-zinc-400 text-xs block mb-1">Status da loja</label>
+                    {/* FIX: usa upsert com id:1 para garantir que a linha existe */}
                     <button
                       onClick={async () => {
                         const newVal = !storeForm.isOpen;
@@ -895,7 +878,8 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                         try {
                           const { error } = await supabase
                             .from('store_config')
-                            .update({
+                            .upsert({
+                              id: 1,
                               name: storeForm.name,
                               neighborhood: storeForm.neighborhood,
                               city: storeForm.city,
@@ -904,8 +888,7 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                               hours: storeForm.hours,
                               whatsapp: storeForm.whatsapp,
                               is_open: newVal,
-                            })
-                            .eq('id', 1);
+                            });
 
                           if (error) throw error;
 
