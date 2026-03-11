@@ -12,9 +12,10 @@ import { toast } from 'sonner';
 // ── Configurações de frete ──────────────────────────────────────────
 const RESTAURANT_LAT = -28.7518006;
 const RESTAURANT_LNG = -49.4729225;
-const FRETE_POR_KM   = 1.00;   // R$ 1,00 por km
-const RAIO_MAXIMO_KM = 14;     // limite de entrega
-const FATOR_ROTA     = 1.25;   // correção linha reta → rua real
+const FRETE_POR_KM    = 1.00;  // R$ 1,00 por km
+const FRETE_MINIMO    = 3.00;  // taxa mínima R$ 3,00
+const RAIO_MAXIMO_KM  = 14;    // limite de entrega
+const FATOR_ROTA      = 1.25;  // correção linha reta → rua real
 
 interface CheckoutModalProps {
   onClose: () => void;
@@ -69,7 +70,8 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
       setFreteValor(0);
     } else {
       setForaDeArea(false);
-      setFreteValor(Math.ceil(kmArredondado) * FRETE_POR_KM); // cobra km inteiro p/ cima
+      const calculado = kmArredondado * FRETE_POR_KM;
+      setFreteValor(Math.max(calculado, FRETE_MINIMO)); // mínimo R$ 3,00
     }
   }, [location, formData.deliveryType]);
 
