@@ -377,7 +377,7 @@ export default function Home() {
 
       {/* MODAIS */}
       {showCheckout && <CheckoutModal onClose={() => setShowCheckout(false)} />}
-      {showAdmin    && <AdminPanel    onClose={() => setShowAdmin(false)}    />}
+      {showAdmin    && <AdminPanel    onClose={() => setShowAdmin(false)}    products={mergedProducts} />}
 
       <style>{`
         @keyframes pulse-green {
