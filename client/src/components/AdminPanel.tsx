@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Camera, Eye, EyeOff, Upload, Printer, RefreshCw, Settings, Lock } from 'lucide-react';
+import { X, Camera, Eye, EyeOff, Upload, Printer, RefreshCw, Settings, Lock, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const ADMIN_PASSWORD = '@grill2025';
@@ -201,6 +201,23 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
     } catch (_) {}
   }
 
+  // Busca imagem com fallback por slug (trata diferença xis-salada vs xis_salada etc.)
+  function getProductImage(productId: string, productName: string): string | undefined {
+    if (productImages[productId]) return productImages[productId];
+    // tenta slug por nome
+    const slug = productName.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (productImages[slug]) return productImages[slug];
+    // busca parcial
+    const found = Object.entries(productImages).find(([k]) =>
+      k.replace(/[_\s]/g, '-') === slug ||
+      slug.includes(k.replace(/[_\s]/g, '-')) ||
+      k.replace(/[_\s]/g, '-').includes(slug)
+    );
+    return found?.[1];
+  }
+
   async function loadOrders() {
     setLoadingOrders(true);
     try {
@@ -259,6 +276,25 @@ export default function AdminPanel({ onClose, products }: AdminPanelProps) {
     try { localStorage.setItem('productOverrides', JSON.stringify(updated)); } catch (_) {}
     window.dispatchEvent(new CustomEvent('productOverridesUpdated', { detail: updated }));
     showToast('✅ Produto atualizado!');
+  }
+
+  async function deleteOrder(orderId: string) {
+    if (!confirm('Excluir este pedido?')) return;
+    try {
+      await supabase.from('orders').delete().eq('id', orderId);
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      showToast('🗑️ Pedido excluído');
+    } catch (_) { showToast('❌ Erro ao excluir'); }
+  }
+
+  async function clearAllOrders() {
+    if (!confirm('Tem certeza que deseja LIMPAR TODOS os pedidos? Esta ação não pode ser desfeita.')) return;
+    try {
+      await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      setOrders([]);
+      lastOrderCount.current = 0;
+      showToast('🗑️ Todos os pedidos foram limpos!');
+    } catch (_) { showToast('❌ Erro ao limpar pedidos'); }
   }
 
   async function updateStatus(orderId: string, status: string) {
@@ -408,21 +444,31 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-zinc-400 text-xs">Últimos 50 pedidos</p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap justify-end">
                       <button
                         onClick={tocarNovoPedido}
-                        className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition"
+                        className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition"
                         title="Testar som"
                       >
-                        🔔 Testar som
+                        🔔 Som
                       </button>
                       <button
                         onClick={loadOrders}
-                        className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition flex items-center gap-1"
+                        className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs transition flex items-center gap-1"
                       >
                         <RefreshCw className={`w-3 h-3 ${loadingOrders ? 'animate-spin' : ''}`} />
                         Atualizar
                       </button>
+                      {orders.length > 0 && (
+                        <button
+                          onClick={clearAllOrders}
+                          className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-300 rounded-lg text-xs transition flex items-center gap-1"
+                          title="Limpar todos os pedidos"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Limpar tudo
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -522,9 +568,16 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
                               ))}
                               <button
                                 onClick={() => printOrder(order)}
-                                className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs flex items-center gap-1 ml-auto transition"
+                                className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs flex items-center gap-1 transition"
                               >
                                 <Printer className="w-3 h-3" /> Imprimir
+                              </button>
+                              <button
+                                onClick={() => deleteOrder(order.id)}
+                                className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-300 rounded-lg text-xs flex items-center gap-1 ml-auto transition"
+                                title="Excluir pedido"
+                              >
+                                <Trash2 className="w-3 h-3" /> Excluir
                               </button>
                             </div>
                           </div>
@@ -538,15 +591,20 @@ ${order.freight > 0 ? `\nFrete: R$ ${Number(order.freight).toFixed(2)}` : ''}
               {/* ── FOTOS ── */}
               {activeTab === 'fotos' && (
                 <div className="space-y-3">
-                  <p className="text-zinc-400 text-xs mb-2">Clique na câmera para enviar uma foto de cada produto</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-zinc-400 text-xs">Clique em "Foto" para enviar imagem de cada produto</p>
+                    <button onClick={loadImages} className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1 transition">
+                      <RefreshCw className="w-3 h-3" /> Recarregar
+                    </button>
+                  </div>
                   {safeProducts.length === 0 && (
                     <p className="text-zinc-500 text-xs text-center py-4">Nenhum produto disponível</p>
                   )}
                   {safeProducts.map(product => (
                     <div key={product.id} className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3 border border-zinc-700">
                       <div className="w-14 h-14 rounded-lg overflow-hidden bg-zinc-700 flex-shrink-0 flex items-center justify-center">
-                        {productImages[product.id]
-                          ? <img src={productImages[product.id]} alt={product.name} className="w-full h-full object-cover" />
+                        {getProductImage(product.id, product.name)
+                          ? <img src={getProductImage(product.id, product.name)} alt={product.name} className="w-full h-full object-cover" />
                           : <span className="text-2xl">🍔</span>
                         }
                       </div>
