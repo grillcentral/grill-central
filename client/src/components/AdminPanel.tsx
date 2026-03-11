@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { X, Camera, Eye, EyeOff, Upload, Cloud, Printer, RefreshCw, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { getProductOverrides, saveProductOverrides, ProductOverride } from '@/lib/productOverrides';
+import { getProductOverrides, saveProductOverride, ProductOverride } from '@/lib/productOverrides';
 import { getStoreConfig, saveStoreConfig, DEFAULT_CONFIG, StoreConfig } from '@/lib/storeConfig';
 
 const ADMIN_PASSWORD = '@grill2025';
@@ -324,13 +324,13 @@ export function AdminPanel({ isOpen, onClose, products }: AdminPanelProps) {
 
   const handleToggleProduct = (id: string, hidden: boolean) => {
     const updated = { ...overrides, [id]: { ...overrides[id], hidden } };
-    setOverrides(updated); saveProductOverrides(updated);
+    setOverrides(updated); saveProductOverride(updated);
     window.dispatchEvent(new Event('productOverridesUpdated'));
   };
 
   const handleSaveProduct = (id: string, field: 'price' | 'description', value: string) => {
     const updated = { ...overrides, [id]: { ...overrides[id], [field]: field === 'price' ? parseFloat(value) : value } };
-    setOverrides(updated); saveProductOverrides(updated);
+    setOverrides(updated); saveProductOverride(updated);
     window.dispatchEvent(new Event('productOverridesUpdated'));
     showToast('✅ Produto atualizado!');
   };
