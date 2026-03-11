@@ -16,6 +16,7 @@ const FRETE_POR_KM    = 1.00;  // R$ 1,00 por km
 const FRETE_MINIMO    = 3.00;  // taxa mínima R$ 3,00
 const RAIO_MAXIMO_KM  = 14;    // limite de entrega
 const FATOR_ROTA      = 1.25;  // correção linha reta → rua real
+const PEDIDO_MINIMO   = 25.00; // pedido mínimo para entrega R$ 25,00
 
 interface CheckoutModalProps {
   onClose: () => void;
@@ -103,6 +104,10 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
 
     if (!formData.name || !formData.phone) {
       toast.error('Preencha nome e telefone!');
+      return;
+    }
+    if (formData.deliveryType === 'delivery' && total < PEDIDO_MINIMO) {
+      toast.error(`Pedido mínimo para entrega é R$ ${PEDIDO_MINIMO.toFixed(2)}. Adicione mais itens!`);
       return;
     }
     if (formData.deliveryType === 'delivery' && !formData.address) {
@@ -328,7 +333,16 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
                 <span>R$ {freteValor.toFixed(2)}</span>
               </div>
             )}
-            {formData.deliveryType === 'delivery' && !location && (
+            {formData.deliveryType === 'delivery' && total < PEDIDO_MINIMO && (
+              <div className="bg-yellow-950 border border-yellow-700 rounded-xl p-3 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                <p className="text-xs text-yellow-400">
+                  Pedido mínimo para entrega: <strong>R$ {PEDIDO_MINIMO.toFixed(2)}</strong><br/>
+                  Faltam <strong>R$ {(PEDIDO_MINIMO - total).toFixed(2)}</strong> para atingir o mínimo
+                </p>
+              </div>
+            )}
+            {formData.deliveryType === 'delivery' && !location && total >= PEDIDO_MINIMO && (
               <p className="text-xs text-yellow-500">
                 ⚠️ Envie sua localização para calcular o frete
               </p>
@@ -340,10 +354,17 @@ export default function CheckoutModal({ onClose }: CheckoutModalProps) {
 
             <Button
               type="submit"
-              disabled={formData.deliveryType === 'delivery' && foraDeArea}
+              disabled={
+                (formData.deliveryType === 'delivery' && foraDeArea) ||
+                (formData.deliveryType === 'delivery' && total < PEDIDO_MINIMO)
+              }
               className="w-full bg-red-600 hover:bg-red-700 text-lg py-6 mt-2 disabled:bg-zinc-700 disabled:cursor-not-allowed"
             >
-              {foraDeArea ? '❌ Fora da área de entrega' : 'Enviar Pedido via WhatsApp'}
+              {foraDeArea
+                ? '❌ Fora da área de entrega'
+                : formData.deliveryType === 'delivery' && total < PEDIDO_MINIMO
+                ? `⚠️ Mínimo R$ ${PEDIDO_MINIMO.toFixed(2)} para entrega`
+                : 'Enviar Pedido via WhatsApp'}
             </Button>
           </div>
 
